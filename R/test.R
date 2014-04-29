@@ -23,7 +23,7 @@ rVec <- c(0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000
 
 iota <- 0.0002466508
 
-proj.steps <- seq(1, floor(length(rVec)*dt) + 1.5, by=0.1)
+proj.steps <- seq(1, floor(length(rVec)*0.1) + 1.5, by=0.1)
 t0 <- min(proj.steps[rVec > 0])
 
 load("south-africa-parameters.RData")
