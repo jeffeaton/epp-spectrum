@@ -1,2 +1,7 @@
+.Rhistory
+*~
+*.o
+*.so
+*.out
 */.Rhistory
 */.RData

@@ -1,0 +1,45 @@
+This project is an implementation of a combined implementation of the EPP and
+Spectrum models used for UNAIDS HIV estimates. The purpose of this is to
+integrate the demographic structure of the Spectrum model into the EPP model
+used for estimating epidemic trends from surveillance data.
+
+The repository maintains an R implementation and C++ implementation of the
+model. Currently the demographic projection model takes an initial pulse and  
+time series for the force of infection (r parameter), and implements the
+R-spline model based on code from Dan Hogan. 
+
+Eventually this will be extended to include the R-trend and EPP classic models. 
+And then it will be extended to incorporate more flexible models for age-
+specific incidence and force of infection.
+
+Currently parameter values are hard-coded based for South Africa based on
+the 2012 Spectrum file.
+
+
+Files  
+-----
+
+- analysis-functions.R: functions to summarizes the outputs of the Spectrum
+  model.
+
+R/: subdirectory containing the full R implementation of the model.
+-- 
+
+- spectrum.R: R version of spectrum demographic projection model.
+- likelihood.R: R implementation of the likelihood (incomplete).
+- south-africa-parameters.RData: RData file with parameter values to be loaded.
+- test.R: file to test projection model and R-spline implementation
+
+C++/: subdirectory for the C++ implementation of the model
+----
+
+- parameters.h: definition of model parameters (hard coded for South Africa
+  at the moment).
+- states.cpp: state space functions
+- states.h: state space declaration
+- model.cpp: model definition
+- model.h: declares fnSpectrum()
+- rlib.cpp: wrapper function to be loaded into R
+- functions.R: wrapper function to call model
+- test.R: test R implementation of the model
+- test.cpp: test C++ model
