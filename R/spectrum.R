@@ -61,18 +61,24 @@ fnSpectrum <- function(iota, rVec, dt = 0.1){
       
       ## ART initiation
       numart.15plus.ts <- sum(c(ts %% 1 + dt, 1-(ts %% 1 + dt)) * artnum.15plus[c(year.idx, max(year.idx-1, 1))])
-      numart.15plus.curr <- sum(X[,age15plus.idx,,-1])
-      art.15plus.anninits <- (numart.15plus.ts - numart.15plus.curr)/dt - sum(grad[,age15plus.idx,,-1]) # desired change rate minus current exits
-      numart.15plus.elig <- sum(X[, age15plus.idx, artelig.idx[year.idx]:DS, 1])
-      artinit.ann.ts <- ifelse(numart.15plus.elig == 0, 0, min(art.15plus.anninits/numart.15plus.elig, 1/dt)) * X[, age15plus.idx, artelig.idx[year.idx]:DS, 1]
+      if(numart.15plus.ts > 0){
+        numart.15plus.curr <- sum(X[,age15plus.idx,,-1])
+        art.15plus.anninits <- (numart.15plus.ts - numart.15plus.curr)/dt - sum(grad[,age15plus.idx,,-1]) # desired change rate minus current exits
+
+        artelig.15plus <- X[, age15plus.idx, artelig.idx[year.idx]:DS, 1]
+        expect.mort.weight <- cd4.art.mort[, age15plus.idx, artelig.idx[year.idx]:DS - 1, 1] / sum(artelig.15plus * cd4.art.mort[, age15plus.idx, artelig.idx[year.idx]:DS - 1, 1])
+        artinit.weight <- (expect.mort.weight + 1/sum(artelig.15plus))/2  # average eligibility and expected mortality
+        artinit.ann.ts <- art.15plus.anninits * artinit.weight * artelig.15plus
+        artinit.ann.ts[artinit.ann.ts > artelig.15plus/dt] <- artelig.15plus[artinit.ann.ts > artelig.15plus/dt]/dt  # check that don't initiate more than the number eligible
       
-      incr(grad[,age15plus.idx, artelig.idx[year.idx]:DS, 1], -artinit.ann.ts)
-      incr(grad[,age15plus.idx, artelig.idx[year.idx]:DS, 2], artinit.ann.ts)
-    }
+        incr(grad[,age15plus.idx, artelig.idx[year.idx]:DS, 1], -artinit.ann.ts)
+        incr(grad[,age15plus.idx, artelig.idx[year.idx]:DS, 2], artinit.ann.ts)
+      } # if(numart.15plus.ts > 0)
+    } # if(ts >= t0)
 
     ## do projection (euler integration) ##
     incr(X, dt*grad)
-  }
+  } # for(ts in proj.steps)
 
   return(X.out)
 }
