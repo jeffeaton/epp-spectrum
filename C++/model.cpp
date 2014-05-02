@@ -14,12 +14,19 @@
 ////  Declare functions  ////
 /////////////////////////////
 
+void InitialisePopulation(states * y);
+void SetParamTS(const double * rVec, const double iota, const size_t ts, parameters * param);
+void PrepareHIV(states * y);
+void PrepareART(states * y);
+
 states rk4(states y, double dt, const struct parameters *);
 states euler(states y, const double dt, const struct parameters *);
 states grad(states y, const struct parameters *);
+
+// Output functions
 void RecordFullOutput(states * y, const size_t outIdx, const size_t numOutDates, double * Xout);
-void PrepareHIV(states * y);
-void PrepareART(states * y);
+double fn15to49prev(states * y, parameters * param);
+double fnANCprev(states * y, parameters * param);
 
 
 ////////////////////////////
@@ -33,38 +40,18 @@ void fnSpectrum(const double iota, const double * rVec, const size_t numOutDates
 
   // initialise population
   states current;
-  current.hiv_idx = 1;
-  current.art_idx = 1;
-  for(size_t g = 0; g < NG; g++)
-    for(size_t a = 0; a < AG; a++)
-      for(size_t m = 0; m < current.hiv_idx; m++)
-        for(size_t u = 0; u < current.art_idx; u++)
-          current.X[g][a][m][u] = 0.0;
-
-  for(size_t g = 0; g < NG; g++)
-    for(size_t a = 0; a < AG; a++)
-      current.X[g][a][0][0] = init_pop[g][a];
+  InitialisePopulation(&current);
 
   // simulate the model
   for(size_t ts = 0; ts < PROJ_STEPS; ts++){
 
-    param.year_idx = (size_t) ts*dt;
-    param.r = rVec[ts];
+    SetParamTS(rVec, iota, ts, &param);
 
-    // determine desired number on ART
-    double frac_yr = fmod(ts*dt, 1.0) + dt;
-    param.art_ts = frac_yr * artnum_15plus[param.year_idx] + (1.0 - frac_yr) * ((param.year_idx==0)?0.0:artnum_15plus[param.year_idx-1]);
-
-    if(ts == ts0){
-      param.iota = iota;
+    if(ts == ts0)
       PrepareHIV(&current);
-    } else {
-      param.iota = 0;
-    }
 
-    if(param.art_ts > 0 && current.art_idx != TS){
+    if(param.art_ts > 0 && current.art_idx != TS)
       PrepareART(&current);
-    }
 
     current = euler(current, dt, &param);
 
@@ -72,6 +59,40 @@ void fnSpectrum(const double iota, const double * rVec, const size_t numOutDates
     if(ts % ((size_t) (1.0/dt)) + 1 == (1.0/(2*dt))){
       size_t out_idx = (size_t) ts * dt;
       RecordFullOutput(&current, out_idx, numOutDates, Xout);
+    }
+
+  }
+
+  return;
+}
+
+void fnSpectrumPrev(const double iota, const double * rVec, struct modprev * out)
+{
+  // set parameters
+  struct parameters param;
+
+  // initialise population
+  states current;
+  InitialisePopulation(&current);
+
+  // simulate the model
+  for(size_t ts = 0; ts < PROJ_STEPS; ts++){
+
+    SetParamTS(rVec, iota, ts, &param);
+
+    if(ts == ts0)
+      PrepareHIV(&current);
+
+    if(param.art_ts > 0 && current.art_idx != TS)
+      PrepareART(&current);
+
+    current = euler(current, dt, &param);
+
+    // record the outputs (midyear)
+    if(ts % ((size_t) (1.0/dt)) + 1 == (1.0/(2*dt))){
+      size_t out_idx = (size_t) ts * dt;
+      out->ANCprev[out_idx] = fnANCprev(&current, &param);
+      out->a15to49prev[out_idx] = fn15to49prev(&current, &param);
     }
 
   }
@@ -101,7 +122,34 @@ states euler(states y, const double dt, const struct parameters * param)
 }
 
 
-/* the model gradient (differential equations) */
+///////////////////////////////////////////////////////
+////  the model gradient (differential equations)  ////
+///////////////////////////////////////////////////////
+
+void calcFertility(const states * y, const struct parameters * param, double * num_births, double * frac_hivp_moth)
+{
+
+  *num_births = 0.0;
+  *frac_hivp_moth = 0.0;
+
+  for(size_t a = 0; a < AG_FERT; a++){
+    double births_ag = 0.0, hivp_ag = 0.0;
+    for(size_t m = 0; m < y->hiv_idx; m++)
+      for(size_t u = 0; u < y->art_idx; u++){
+        births_ag += asfr[param->year_idx][a] * y->X[FEMALE][IDX_FERT + a][m][u];
+        if(m >= 1)
+          hivp_ag += y->X[FEMALE][IDX_FERT + a][m][u];
+      }
+    double frac_hivp_moth_ag = 1.0 - y->X[FEMALE][IDX_FERT + a][0][0]/(fert_rat[a]*hivp_ag + y->X[FEMALE][IDX_FERT + a][0][0]);
+    *frac_hivp_moth += births_ag*frac_hivp_moth_ag;
+    *num_births += births_ag;
+  }
+
+  *frac_hivp_moth /= *num_births;
+
+  return;
+}
+
 states grad(const states y, const struct parameters * param)
 {
   states out;  // initialise states object to store gradient
@@ -132,31 +180,15 @@ states grad(const states y, const struct parameters * param)
           out.X[g][a][m][u] -= mx[param->year_idx][g][a] * y.X[g][a][m][u];
 
   // fertility
-  double births_by_age[AG_FERT], hivp_by_age[AG_FERT];
-  for(size_t a = 0; a < AG_FERT; a++){
-    births_by_age[a] = 0;
-    hivp_by_age[a] = 0;
-    for(size_t m = 0; m < y.hiv_idx; m++)
-      for(size_t u = 0; u < y.art_idx; u++){
-        births_by_age[a] += asfr[param->year_idx][a] * y.X[FEMALE][IDX_FERT + a][m][u];
-        if(m >= 1)
-          hivp_by_age[a] += y.X[FEMALE][IDX_FERT + a][m][u];
-      }
+  double num_births, frac_hivp_moth;
+  calcFertility(&y, param, &num_births, &frac_hivp_moth);
+
+  out.X[MALE][0][0][0] += num_births * (1.0 - vert_trans*frac_hivp_moth) * srb[param->year_idx] / (srb[param->year_idx] + 1.0);
+  out.X[FEMALE][0][0][0] += num_births * (1.0 - vert_trans*frac_hivp_moth) * 1.0 / (srb[param->year_idx] + 1.0);
+  for(size_t m = 1; m < y.hiv_idx; m++){
+    out.X[MALE][0][m][0] += num_births * vert_trans * frac_hivp_moth * cd4_initdist[MALE][0][m-1] * srb[param->year_idx] / (srb[param->year_idx] + 1.0);
+    out.X[FEMALE][0][m][0] += num_births * vert_trans * frac_hivp_moth * cd4_initdist[FEMALE][0][m-1] * 1.0 / (srb[param->year_idx] + 1.0);
   }
-
-  double frac_hivp_births[AG_FERT];
-  for(size_t a = 0; a < AG_FERT; a++)
-    frac_hivp_births[a] = vert_trans*(1.0 - y.X[FEMALE][IDX_FERT + a][0][0]/(fert_rat[a]*hivp_by_age[a] + y.X[FEMALE][IDX_FERT + a][0][0]));
-
-  for(size_t a = 0; a < AG_FERT; a++){
-    out.X[MALE][0][0][0] += births_by_age[a] * (1.0 - frac_hivp_births[a]) * srb[param->year_idx] / (srb[param->year_idx] + 1.0);
-    out.X[FEMALE][0][0][0] += births_by_age[a] * (1.0 - frac_hivp_births[a]) * 1.0 / (srb[param->year_idx] + 1.0);
-    for(size_t m = 1; m < y.hiv_idx; m++){
-      out.X[MALE][0][m][0] += births_by_age[a] * frac_hivp_births[a] * cd4_initdist[MALE][0][m-1] * srb[param->year_idx] / (srb[param->year_idx] + 1.0);
-      out.X[FEMALE][0][m][0] += births_by_age[a] * frac_hivp_births[a] * cd4_initdist[FEMALE][0][m-1] * 1.0 / (srb[param->year_idx] + 1.0);
-    }
-  }
-
 
   if(y.hiv_idx > 1){
 
@@ -259,23 +291,38 @@ states grad(const states y, const struct parameters * param)
   return out;
 }
 
-
-void RecordFullOutput(states * y, const size_t outIdx, const size_t numOutDates, double * Xout)
+void InitialisePopulation(states * y)
 {
+  y->hiv_idx = 1;
+  y->art_idx = 1;
   for(size_t g = 0; g < NG; g++)
-    for(size_t a = 0; a < AG; a++){
-      for(size_t m = 0; m < y->hiv_idx; m++){
+    for(size_t a = 0; a < AG; a++)
+      for(size_t m = 0; m < y->hiv_idx; m++)
         for(size_t u = 0; u < y->art_idx; u++)
-          Xout[outIdx + (g + NG*(a + AG*(m + DS*u)))*numOutDates] = y->X[g][a][m][u];
-        for(size_t u = y->art_idx; u < TS; u++)
-          Xout[outIdx + (g + NG*(a + AG*(m + DS*u)))*numOutDates] = 0.0;
-      }
-      for(size_t m = y->hiv_idx; m < DS; m++)
-        for(size_t u = 0; u < TS; u++)
-          Xout[outIdx + (g + NG*(a + AG*(m + DS*u)))*numOutDates] = 0.0;
-    }
+          y->X[g][a][m][u] = 0.0;
+  
+  for(size_t g = 0; g < NG; g++)
+    for(size_t a = 0; a < AG; a++)
+      y->X[g][a][0][0] = init_pop[g][a];
 
   return;
+}
+
+void SetParamTS(const double * rVec, const double iota, const size_t ts, parameters * param)
+{
+    param->year_idx = (size_t) ts*dt;
+    param->r = rVec[ts];
+
+    // determine desired number on ART
+    double frac_yr = fmod(ts*dt, 1.0) + dt;
+    param->art_ts = frac_yr * artnum_15plus[param->year_idx] + (1.0 - frac_yr) * ((param->year_idx==0)?0.0:artnum_15plus[param->year_idx-1]);
+
+    if(ts == ts0)
+      param->iota = iota;
+    else 
+      param->iota = 0;
+
+    return;
 }
 
 void PrepareHIV(states * y)
@@ -296,6 +343,57 @@ void PrepareART(states * y)
           y->X[g][a][m][u] = 0.0;
   y->art_idx = TS;
 }
+
+
+/////////////////////////
+////  Model outputs  ////
+/////////////////////////
+
+void RecordFullOutput(states * y, const size_t outIdx, const size_t numOutDates, double * Xout)
+{
+  for(size_t g = 0; g < NG; g++)
+    for(size_t a = 0; a < AG; a++){
+      for(size_t m = 0; m < y->hiv_idx; m++){
+        for(size_t u = 0; u < y->art_idx; u++)
+          Xout[outIdx + (g + NG*(a + AG*(m + DS*u)))*numOutDates] = y->X[g][a][m][u];
+        for(size_t u = y->art_idx; u < TS; u++)
+          Xout[outIdx + (g + NG*(a + AG*(m + DS*u)))*numOutDates] = 0.0;
+      }
+      for(size_t m = y->hiv_idx; m < DS; m++)
+        for(size_t u = 0; u < TS; u++)
+          Xout[outIdx + (g + NG*(a + AG*(m + DS*u)))*numOutDates] = 0.0;
+    }
+
+  return;
+}
+
+ double fn15to49prev(states * y, parameters * param)
+ {
+
+    double Xhivn = 0.0, Xhivp_noart = 0.0, Xart = 0.0;
+    for(size_t g = 0; g < NG; g++)
+      for(size_t a = IDX_15TO49; a < IDX_15TO49+AG_15TO49; a++){
+        Xhivn += y->X[g][a][0][0];
+        for(size_t m = 1; m < y->hiv_idx; m++){
+          Xhivp_noart += y->X[g][a][m][0];
+          for(size_t u = 1; u < y->art_idx; u++){
+            Xart += y->X[g][a][m][u];
+          }
+        }
+      }
+    double Xtot = Xhivn + Xhivp_noart + Xart;
+
+    return 1.0 - Xhivn / Xtot;
+ }
+
+ double fnANCprev(states * y, parameters * param)
+ {
+
+  double num_births, frac_hivp_moth;
+  calcFertility(y, param, &num_births, &frac_hivp_moth);
+
+  return frac_hivp_moth;
+ }
 
 
 /////////////////////////////////////////

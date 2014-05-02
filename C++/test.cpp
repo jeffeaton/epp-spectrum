@@ -39,10 +39,18 @@ int main()
 
   fnSpectrum(iota, rVec, numOutDates, Xout);
 
-  printf("\n\n");
+  printf("\n");
   for(size_t a = 0; a < AG; a++)
     printf("%10f %10f\n", Xout[42 + (0 + NG*(a + AG*(0 + DS*0)))*numOutDates],
            Xout[42 + (1 + NG*(a + AG*(0 + DS*0)))*numOutDates]);
+
+  struct modprev out;
+  fnSpectrumPrev(iota, rVec, &out);
+
+  printf("\nANC prev  15 to 49 prev\n");
+  for(size_t i = 0; i < numOutDates; i++)
+    printf("%8.4f  %13.4f\n", out.ANCprev[i], out.a15to49prev[i]);
+
 
   return 0;
 }
