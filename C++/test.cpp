@@ -1,9 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "states.h"
-#include "parameters.h"
-#include "model.h"
+#include <math.h>
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_matrix.h>
 
+#include "states.h"
+#include "model.h"
+#include "likelihood.h"
+
+#define PROJ_STEPS 426
 const double rVec[PROJ_STEPS] = {0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000,
                                  0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000,
                                  0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.000000000, 0.717848833, 0.715227819, 0.712646261, 0.710103342, 0.707598246, 0.705130158, 0.702698260, 0.700301736, 0.697939770, 0.695611546,
@@ -29,11 +34,12 @@ const double rVec[PROJ_STEPS] = {0.000000000, 0.000000000, 0.000000000, 0.000000
 
 const double iota = 0.0002466508;
 
+double ll(struct modprev * out);  // forward declare, defined in likelihood.cpp
 
 int main()
 {
 
-  size_t numOutDates = (size_t) (PROJ_STEPS * dt + 0.5);
+  size_t numOutDates = NUM_OUTDATES;
 
   double * Xout = (double *) malloc(numOutDates * NG * AG * DS *TS * sizeof(double));
 
@@ -51,8 +57,16 @@ int main()
   for(size_t i = 0; i < numOutDates; i++)
     printf("%8.4f  %13.4f\n", out.ANCprev[i], out.a15to49prev[i]);
 
+  printf("\nll = %f\n", ll(&out));
+
+  const double theta[] = {-27.2776051, 0.2286067, 1.5936094, 2.0196487, -0.4601538, -1.6417664, 1.4846658, 0.1725820, 0.3623600};
+
+  gsl_vector_const_view vw_theta = gsl_vector_const_view_array(theta, 9);
+
+  
+  printf("\n::Example with theta vector::\n");
+  printf("log(prior): %f\n", log(prior(&(vw_theta.vector))));
+  printf("log(likelihood): %f\n", log(likelihood(&(vw_theta.vector))));
 
   return 0;
 }
-
-

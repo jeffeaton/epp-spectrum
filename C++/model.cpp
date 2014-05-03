@@ -401,7 +401,6 @@ void RecordFullOutput(states * y, const size_t outIdx, const size_t numOutDates,
 /////////////////////////////////////////
 
 #define SPLINE_ORDER 4
-#define NUM_SPLINES
 
 void fnBSpline(const double * u, const size_t numSplines, const size_t numSplineSteps, double * rVec)
 {
@@ -429,8 +428,9 @@ void fnBSpline(const double * u, const size_t numSplines, const size_t numSpline
   gsl_vector *coefs = gsl_vector_alloc(numSplines);
   gsl_vector_set(coefs, 0, u[0]);
   gsl_vector_set(coefs, 1, u[1]);
-  for(size_t i = 2; i < numSplines; i++)
+  for(size_t i = 2; i < numSplines; i++){
     gsl_vector_set(coefs, i, 2*gsl_vector_get(coefs, i-1) - gsl_vector_get(coefs, i-2) + u[i]);
+  }
 
 
   gsl_vector_view vw_rVec = gsl_vector_view_array(rVec, numSplineSteps);
@@ -439,10 +439,24 @@ void fnBSpline(const double * u, const size_t numSplines, const size_t numSpline
   return;
 }
 
-double * fnGenRVec(const double * u, const size_t numSplines)
+/* 
+   fnGenRVec allocates memory for r-vector, calls fnBSpline to generate spline
+   (appropriately adusted for t0).
+
+   Returns pointer to rVec if all values of rVec are between [0, maxR), else frees
+   the memory allocated for rVec and returns NULL
+*/
+double * fnGenRVec(const double * u, const size_t numSplines, const double maxR)
 {
   double * rVec = (double *) calloc(PROJ_STEPS, sizeof(double));
   fnBSpline(u, numSplines, PROJ_STEPS - ts0, &rVec[ts0]);
+
+  for(size_t i = ts0; i < PROJ_STEPS; i++)
+    if(rVec[i] < 0 || rVec[i] >= maxR){
+      free(rVec);
+      return NULL;
+    }
+
   return rVec;
 }
 
