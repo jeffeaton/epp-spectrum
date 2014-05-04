@@ -80,7 +80,6 @@ double ll(struct modprev * out)
 
   ll_anc = log(ll_S2)/2.0 - ll_anc/2.0 + (pow(ll_dbar, 2.0) - ll_d2bar)/ll_S2 + log(gsl_cdf_gaussian_P(ancBiasPrior[1] - ll_dbar, sqrt(ll_S2)) - gsl_cdf_gaussian_P(ancBiasPrior[0] - ll_dbar, sqrt(ll_S2)));
 
-
   // ll for HSRC survey data
   double ll_hhsurv = 0.0;
   for(size_t i = 0; i < numHHSurvYears; i++)
@@ -94,17 +93,21 @@ double likelihood(const gsl_vector * theta)
 
   double iota = exp(gsl_vector_get(theta, 0));
 
-  double * rVec = fnGenRVec(gsl_vector_const_ptr(theta, 2), NUMSPLINES, MAX_R);
-  if(rVec == NULL) // mallocs rVec if successful
+  double * rVec = fnGenRVec(gsl_vector_const_ptr(theta, 2), NUMSPLINES, MAX_R); // mallocs rVec if successful
+  if(rVec == NULL)
     return 0.0;
-
+  
   struct modprev out;
   fnSpectrumPrev(iota, rVec, &out);
   fnFreeRVec(rVec);
 
   for(size_t i = 0; i < numANCYears; i++)
-    if(isnan(out.ANCprev[ancIdx[i]]))
+    if(isnan(out.ANCprev[ancIdx[i]]) || out.ANCprev[ancIdx[i]] <= 0.0 || out.ANCprev[ancIdx[i]] > 0.95)
        return 0.0;
+
+  for(size_t i = 0; i < numHHSurvYears; i++)
+    if(isnan(out.a15to49prev[hhsurvIdx[i]]) || out.a15to49prev[hhsurvIdx[i]] <= 0.0 || out.a15to49prev[hhsurvIdx[i]] > 0.95)
+      return 0.0;
 
   return(exp(ll(&out)));
 }

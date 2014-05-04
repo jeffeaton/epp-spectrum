@@ -50,6 +50,8 @@ int main()
     printf("%10f %10f\n", Xout[42 + (0 + NG*(a + AG*(0 + DS*0)))*numOutDates],
            Xout[42 + (1 + NG*(a + AG*(0 + DS*0)))*numOutDates]);
 
+  free(Xout);
+
   struct modprev out;
   fnSpectrumPrev(iota, rVec, &out);
 
@@ -59,7 +61,8 @@ int main()
 
   printf("\nll = %f\n", ll(&out));
 
-  const double theta[] = {-27.2776051, 0.2286067, 1.5936094, 2.0196487, -0.4601538, -1.6417664, 1.4846658, 0.1725820, 0.3623600};
+  // const double theta[] = {-27.2776051, 0.2286067, 1.5936094, 2.0196487, -0.4601538, -1.6417664, 1.4846658, 0.1725820, 0.3623600};
+  const double theta[] = {-2.427689764762438e+01, -8.060906058729440e-02, 1.962444061070041e+00, 7.898717801500630e-01, 7.133904109969543e-01, 1.734195483892624e-01, 2.934792020244043e-01, 1.134129669092168e+00, -2.662140188992846e-01};
 
   gsl_vector_const_view vw_theta = gsl_vector_const_view_array(theta, 9);
 

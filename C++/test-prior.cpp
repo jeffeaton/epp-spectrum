@@ -23,30 +23,41 @@ int main(int argc, char *argv[])
   rng = gsl_rng_alloc (T);
   gsl_rng_set(rng, rng_seed);
 
-  
   gsl_matrix * Xmat = gsl_matrix_alloc(InitSamples, NumParam);
 
   sample_prior(rng, InitSamples, Xmat);
 
+  // for(size_t i = 0; i < InitSamples; i++){
+  //   for(size_t j = 0; j < NumParam; j++)
+  //     printf("%10.5f ", gsl_matrix_get(Xmat, i, j));
+  //   printf("\n");
+  // }
+
+  // printf("\nlog prior:\n");
+  // for(size_t i = 0; i < InitSamples; i++){
+  //   gsl_vector_view v = gsl_matrix_row(Xmat, i);
+  //   printf("%8.4f ", log(prior(&v.vector)));
+  //   if((i+1) % 10 == 0) printf("\n");
+  // }
+
+  // printf("\nlog likelihood:\n");
+  // for(size_t i = 0; i < InitSamples; i++){
+  //   gsl_vector_view v = gsl_matrix_row(Xmat, i);
+  //   printf("%8.4f ", log(likelihood(&v.vector)));
+  //   if((i+1) % 10 == 0) printf("\n");
+  // }
+
+
+  #pragma omp parallel for
   for(size_t i = 0; i < InitSamples; i++){
-    for(size_t j = 0; j < NumParam; j++)
-      printf("%10.5f ", gsl_matrix_get(Xmat, i, j));
-    printf("\n");
+    gsl_vector_const_view v = gsl_matrix_const_row(Xmat, i);
+    likelihood(&v.vector);
+    if(likelihood(&v.vector) > 0)
+      printf("%7zu: %f %f\n", i, log(prior(&v.vector)), log(likelihood(&v.vector)));
   }
 
-  printf("\nlog prior:\n");
-  for(size_t i = 0; i < InitSamples; i++){
-    gsl_vector_view v = gsl_matrix_row(Xmat, i);
-    printf("%8.4f ", log(prior(&v.vector)));
-    if((i+1) % 10 == 0) printf("\n");
-  }
-
-  printf("\nlog likelihood:\n");
-  for(size_t i = 0; i < InitSamples; i++){
-    gsl_vector_view v = gsl_matrix_row(Xmat, i);
-    printf("%8.4f ", log(likelihood(&v.vector)));
-    if((i+1) % 10 == 0) printf("\n");
-  }
+  gsl_matrix_free(Xmat);
+  gsl_rng_free(rng);
 
   return 0;
 }
