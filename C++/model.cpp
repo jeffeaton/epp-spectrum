@@ -404,7 +404,7 @@ void RecordFullOutput(states * y, const size_t outIdx, const size_t numOutDates,
 
 void fnBSpline(const double * u, const size_t numSplines, const size_t numSplineSteps, double * rVec)
 {
-
+  
   const size_t nbreaks = numSplines - SPLINE_ORDER + 2;
   double dk = ((double) (numSplineSteps - 1))/(nbreaks - 1); // distance between knots
 
@@ -412,7 +412,7 @@ void fnBSpline(const double * u, const size_t numSplines, const size_t numSpline
   gsl_bspline_workspace *w = gsl_bspline_alloc(SPLINE_ORDER, nbreaks);
   gsl_vector *x = gsl_vector_alloc(numSplines);
   gsl_matrix *designMat = gsl_matrix_alloc(numSplineSteps, numSplines);
-
+  
   // set the knot locations
   for(size_t i = 0; i < numSplines + SPLINE_ORDER; i++)
     gsl_vector_set(w->knots, i, 1.0 + dk * ((double) i - (SPLINE_ORDER-1)));
@@ -423,7 +423,6 @@ void fnBSpline(const double * u, const size_t numSplines, const size_t numSpline
     gsl_matrix_set_row(designMat, i, x);
    }
   
-
   // determine spline coefficients
   gsl_vector *coefs = gsl_vector_alloc(numSplines);
   gsl_vector_set(coefs, 0, u[0]);
@@ -431,11 +430,15 @@ void fnBSpline(const double * u, const size_t numSplines, const size_t numSpline
   for(size_t i = 2; i < numSplines; i++){
     gsl_vector_set(coefs, i, 2*gsl_vector_get(coefs, i-1) - gsl_vector_get(coefs, i-2) + u[i]);
   }
-
-
+  
   gsl_vector_view vw_rVec = gsl_vector_view_array(rVec, numSplineSteps);
-  gsl_blas_dgemv(CblasNoTrans, 1.0, designMat, coefs, 0.0, &(vw_rVec.vector));
-
+  gsl_blas_dgemv(CblasNoTrans, 1.0, designMat, coefs, 0.0, &vw_rVec.vector);
+  
+  gsl_vector_free(coefs);
+  gsl_bspline_free(w);
+  gsl_vector_free(x);
+  gsl_matrix_free(designMat);
+    
   return;
 }
 
@@ -450,13 +453,13 @@ double * fnGenRVec(const double * u, const size_t numSplines, const double maxR)
 {
   double * rVec = (double *) calloc(PROJ_STEPS, sizeof(double));
   fnBSpline(u, numSplines, PROJ_STEPS - ts0, &rVec[ts0]);
-
+  
   for(size_t i = ts0; i < PROJ_STEPS; i++)
     if(rVec[i] < 0 || rVec[i] >= maxR){
       free(rVec);
       return NULL;
     }
-
+  
   return rVec;
 }
 
