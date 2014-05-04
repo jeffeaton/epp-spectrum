@@ -122,7 +122,7 @@ void fnIMIS(const size_t InitSamples, const size_t StepSamples, const size_t Fin
     #pragma omp parallel for
     for(size_t i = 0; i < numImisSamples; i++){
       imp_weight_denom[i] = (InitSamples*prior_all[i] + StepSamples*gaussian_sum[i])/(InitSamples + StepSamples * imisStep);
-      imp_weights[i] = likelihood_all[i]*prior_all[i]/imp_weight_denom[i];
+      imp_weights[i] = (prior_all[i] > 0)?likelihood_all[i]*prior_all[i]/imp_weight_denom[i]:0;
     }
 
     double sumWeights = 0.0;
