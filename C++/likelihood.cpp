@@ -8,6 +8,15 @@
 #include "likelihood.h"
 #include "model.h"
 
+// Define which likelihood to compile (can be passed at compile time)
+
+#ifndef incl2012
+  #define incl2012 1 // set to 0 if want to exclude 2012 HSRC data
+#endif
+
+#ifndef ancprev
+  #define ancprev 1 // set to 0 if want to use adult prevalence in likelihood rather than derived ANC prevalence
+#endif
 
 //////////////////////////////////
 ////  Prior parameter values  ////
@@ -48,7 +57,13 @@ const size_t numANCYears = 22;
 const double hhsurvLogitPrev[] = {-1.688296, -1.643422, -1.592731, -1.463058};
 const double hhsurvLogitVar[] = {0.005099825, 0.002752585, 0.002773331, 0.002178224};
 const size_t hhsurvIdx[] = {32, 35, 38, 42}; // note -1 vs R version to change from 1 based to 0 based indexing
-const size_t numHHSurvYears = 4;
+
+#if incl2012
+  const size_t numHHSurvYears = 4;
+#else 
+  const size_t numHHSurvYears = 3;
+#endif
+
 
 /////////////////////
 ////  Functions  ////
@@ -67,7 +82,11 @@ double ll(struct modprev * out)
   // ll for ANC data
   double ll_S2 = 0.0, ll_dbar = 0.0, ll_d2bar = 0.0, ll_anc = 0.0;
   for(size_t i = 0; i < numANCYears; i++){
-    double p_i = out->ANCprev[ancIdx[i]];
+    #if ancprev
+      double p_i = out->ANCprev[ancIdx[i]];
+    #else 
+      double p_i = out->a15to49prev[ancIdx[i]];
+    #endif 
     if(isnan(p_i) || p_i <= 0.0 || p_i > MAX_PREV)
       return -INFINITY;
     double logitPi = logit(p_i);
