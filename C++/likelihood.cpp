@@ -15,7 +15,7 @@
 
 #define NUMSPLINES 7
 #define MAX_R 3
-#define MAX_PREV 
+#define MAX_PREV 0.95
 
 const double ancBiasPrior[2] = {0, 1};
 const double logiota_unif_prior[] = {log(1e-13), log(0.0025)};
@@ -50,7 +50,6 @@ const double hhsurvLogitVar[] = {0.005099825, 0.002752585, 0.002773331, 0.002178
 const size_t hhsurvIdx[] = {32, 35, 38, 42}; // note -1 vs R version to change from 1 based to 0 based indexing
 const size_t numHHSurvYears = 4;
 
-
 /////////////////////
 ////  Functions  ////
 /////////////////////
@@ -68,7 +67,10 @@ double ll(struct modprev * out)
   // ll for ANC data
   double ll_S2 = 0.0, ll_dbar = 0.0, ll_d2bar = 0.0, ll_anc = 0.0;
   for(size_t i = 0; i < numANCYears; i++){
-    double logitPi = logit(out->ANCprev[ancIdx[i]]);
+    double p_i = out->ANCprev[ancIdx[i]];
+    if(isnan(p_i) || p_i <= 0.0 || p_i > MAX_PREV)
+      return -INFINITY;
+    double logitPi = logit(p_i);
     ll_S2 += 1.0/ancLogitVar[i];
     ll_dbar += (ancLogitPrev[i] - logitPi)/ancLogitVar[i];
     ll_d2bar += pow(ancLogitPrev[i] - logitPi, 2.0)/ancLogitVar[i];
@@ -82,8 +84,12 @@ double ll(struct modprev * out)
 
   // ll for HSRC survey data
   double ll_hhsurv = 0.0;
-  for(size_t i = 0; i < numHHSurvYears; i++)
-    ll_hhsurv += -log(hhsurvLogitVar[i])/2.0 - pow(hhsurvLogitPrev[i] - logit(out->a15to49prev[hhsurvIdx[i]]), 2.0)/(2.0*hhsurvLogitVar[i]);
+  for(size_t i = 0; i < numHHSurvYears; i++){
+    double p_i = out->a15to49prev[hhsurvIdx[i]];
+    if(isnan(p_i) || p_i <= 0.0 || p_i > MAX_PREV)
+      return -INFINITY;
+    ll_hhsurv += -log(hhsurvLogitVar[i])/2.0 - pow(hhsurvLogitPrev[i] - logit(p_i), 2.0)/(2.0*hhsurvLogitVar[i]);
+  }
 
   return ll_anc + ll_hhsurv;
 }
@@ -100,14 +106,6 @@ double likelihood(const gsl_vector * theta)
   struct modprev out;
   fnSpectrumPrev(iota, rVec, &out);
   fnFreeRVec(rVec);
-
-  for(size_t i = 0; i < numANCYears; i++)
-    if(isnan(out.ANCprev[ancIdx[i]]) || out.ANCprev[ancIdx[i]] <= 0.0 || out.ANCprev[ancIdx[i]] > 0.95)
-       return 0.0;
-
-  for(size_t i = 0; i < numHHSurvYears; i++)
-    if(isnan(out.a15to49prev[hhsurvIdx[i]]) || out.a15to49prev[hhsurvIdx[i]] <= 0.0 || out.a15to49prev[hhsurvIdx[i]] > 0.95)
-      return 0.0;
 
   return(exp(ll(&out)));
 }
