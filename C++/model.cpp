@@ -6,6 +6,7 @@
 
 #include "states.h"
 #include "model.h"
+#include "incidence.h"
 #include "parameters.h"
 
 #include <stdio.h>
@@ -15,7 +16,7 @@
 /////////////////////////////
 
 void InitialisePopulation(states * y);
-void SetParamTS(const double * rVec, const double iota, const size_t ts, parameters * param);
+void SetParamTS(const size_t ts, parameters * param);
 void PrepareHIV(states * y);
 void PrepareART(states * y);
 
@@ -33,10 +34,10 @@ double fnANCprev(states * y, parameters * param);
 ////  Define functions  ////
 ////////////////////////////
 
-void fnSpectrum(const double iota, const double * rVec, const size_t numOutDates, double * Xout)
+void fnSpectrum(struct parameters * param, const size_t numOutDates, double * Xout)
 {
   // set parameters
-  struct parameters param;
+  // struct parameters param;
 
   // initialise population
   states current;
@@ -45,15 +46,15 @@ void fnSpectrum(const double iota, const double * rVec, const size_t numOutDates
   // simulate the model
   for(size_t ts = 0; ts < PROJ_STEPS; ts++){
 
-    SetParamTS(rVec, iota, ts, &param);
+    SetParamTS(ts, param);
 
     if(ts == ts0)
       PrepareHIV(&current);
 
-    if(param.art_ts > 0 && current.art_idx != TS)
+    if(param->art_ts > 0 && current.art_idx != TS)
       PrepareART(&current);
 
-    current = euler(current, dt, &param);
+    current = euler(current, dt, param);
 
     // record the outputs (midyear)
     if(ts % ((size_t) (1.0/dt)) + 1 == (1.0/(2*dt))){
@@ -66,10 +67,10 @@ void fnSpectrum(const double iota, const double * rVec, const size_t numOutDates
   return;
 }
 
-void fnSpectrumPrev(const double iota, const double * rVec, struct modprev * out)
+void fnSpectrumPrev(struct parameters * param, struct modprev * out)
 {
   // set parameters
-  struct parameters param;
+  // struct parameters param;
 
   // initialise population
   states current;
@@ -78,21 +79,21 @@ void fnSpectrumPrev(const double iota, const double * rVec, struct modprev * out
   // simulate the model
   for(size_t ts = 0; ts < PROJ_STEPS; ts++){
 
-    SetParamTS(rVec, iota, ts, &param);
+    SetParamTS(ts, param);
 
     if(ts == ts0)
       PrepareHIV(&current);
 
-    if(param.art_ts > 0 && current.art_idx != TS)
+    if(param->art_ts > 0 && current.art_idx != TS)
       PrepareART(&current);
 
-    current = euler(current, dt, &param);
+    current = euler(current, dt, param);
 
     // record the outputs (midyear)
     if(ts % ((size_t) (1.0/dt)) + 1 == (1.0/(2*dt))){
       size_t out_idx = (size_t) ts * dt;
-      out->ANCprev[out_idx] = fnANCprev(&current, &param);
-      out->a15to49prev[out_idx] = fn15to49prev(&current, &param);
+      out->ANCprev[out_idx] = fnANCprev(&current, param);
+      out->a15to49prev[out_idx] = fn15to49prev(&current, param);
     }
 
   }
@@ -193,6 +194,7 @@ states grad(const states y, const struct parameters * param)
   if(y.hiv_idx > 1){
 
     // incidence
+    /*
     double Xhivn = 0.0, Xhivp_noart = 0.0, Xart = 0.0;
     for(size_t g = 0; g < NG; g++)
       for(size_t a = IDX_15TO49; a < IDX_15TO49+AG_15TO49; a++){
@@ -224,6 +226,16 @@ states grad(const states y, const struct parameters * param)
     for(size_t g = 0; g < NG; g++)
       for(size_t a = 0; a < AG; a++){
         age_inc[g][a] = inc_rate_15to49 * inc_rr[g][a] * Xhivn / Xhivn_incrr;
+        out.X[g][a][0][0] -= age_inc[g][a] * y.X[g][a][0][0];
+        for(size_t m = 1; m < DS; m++)
+          out.X[g][a][m][0] += age_inc[g][a] * cd4_initdist[g][a][m-1] * y.X[g][a][0][0];
+      }
+    */
+    double age_inc[NG][AG];
+    fnAgeInc(y, param, age_inc);
+
+    for(size_t g = 0; g < NG; g++)
+      for(size_t a = 0; a < AG; a++){
         out.X[g][a][0][0] -= age_inc[g][a] * y.X[g][a][0][0];
         for(size_t m = 1; m < DS; m++)
           out.X[g][a][m][0] += age_inc[g][a] * cd4_initdist[g][a][m-1] * y.X[g][a][0][0];
@@ -308,19 +320,19 @@ void InitialisePopulation(states * y)
   return;
 }
 
-void SetParamTS(const double * rVec, const double iota, const size_t ts, parameters * param)
+void SetParamTS(const size_t ts, parameters * param)
 {
     param->year_idx = (size_t) ts*dt;
-    param->r = rVec[ts];
+    param->r = param->rVec[ts];
 
     // determine desired number on ART
     double frac_yr = fmod(ts*dt, 1.0) + dt;
     param->art_ts = frac_yr * artnum_15plus[param->year_idx] + (1.0 - frac_yr) * ((param->year_idx==0)?0.0:artnum_15plus[param->year_idx-1]);
 
     if(ts == ts0)
-      param->iota = iota;
+      param->iota_ts = param->iota;
     else 
-      param->iota = 0;
+      param->iota_ts = 0;
 
     return;
 }

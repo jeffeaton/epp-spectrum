@@ -6,6 +6,7 @@
 #include <gsl/gsl_sf_gamma.h>
 
 #include "likelihood.h"
+#include "states.h"
 #include "model.h"
 
 // Define which likelihood to compile (can be passed at compile time)
@@ -123,7 +124,7 @@ double likelihood(const gsl_vector * theta)
     return 0.0;
   
   struct modprev out;
-  fnSpectrumPrev(iota, rVec, &out);
+  fnSpectrumPrev(iota, rVec, NULL, &out);
   fnFreeRVec(rVec);
 
   return(exp(ll(&out)));

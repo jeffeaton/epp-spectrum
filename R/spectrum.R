@@ -9,28 +9,7 @@ fert.idx <- 4:10
 age15to49.idx <- 4:10
 age15plus.idx <- 4:AG
 
-## age/sex-specific HIV prevalence incorporating transmission reduction for those on ART
-fnEffectiveAgePrev <- function(X) {(rowSums(X[,,-1,1],,2) + relinfect.ART*rowSums(X[,,-1,-1],,2))/rowSums(X,,2)}  
-
-
-fnAgeInc <- function(X, r, iota, year.idx, model=c("ageincrr", "relfoi")){
-
-  if(model == "ageincrr"){
-    inc.rate.15to49 <-  r * ((sum(X[,age15to49.idx,-1,1]) + relinfect.ART*sum(X[,age15to49.idx,-1,-1]))/sum(X[,age15to49.idx,,]) + iota)
-    inc.rr <- rbind(inc.agerat.male[,year.idx], inc.sexrat[year.idx]*inc.agerat.female[,year.idx])
-    age.inc <- inc.rr*inc.rate.15to49/(sum(X[,age15to49.idx,1,1]*inc.rr[,age15to49.idx])/sum(X[,age15to49.idx,1,1]))
-
-  } else if(model == "relfoi"){
-    eff.ageprev <- fnEffectiveAgePrev(X)
-    age.inc <- rbind(r * (eff.ageprev[2,] + iota) %*% t(Rmat), # incidence rate in men, function of prevalence in women
-                     r * (eff.ageprev[1,] + iota) %*% Rmat)    # incidence rate in women, function of prevalence in men
-  }
-
-  return(age.inc)
-}
-
-
-fnSpectrum <- function(iota, rVec, dt = 0.1){
+fnSpectrum <- function(param, dt = 0.1){
 
   ## initialize output
   X.out <- array(NA, c(max(floor(proj.steps - dt*floor((1/dt)/2))),  NG, AG, DS, TS))
@@ -66,7 +45,7 @@ fnSpectrum <- function(iota, rVec, dt = 0.1){
 
     if(ts >= t0){
       ## incidence
-      age.inc <- fnAgeInc(X, rVec[ts == proj.steps], (ts == t0)*iota, year.idx)
+      age.inc <- fnAgeInc(X, param$rVec[ts == proj.steps], (ts == t0)*param$iota, param, year.idx)
       incr(grad[,,1,1]) <- -age.inc*X[,,1,1] # remove incident infections from susceptibles
       incr(grad[,,-1,1]) <- array(apply(cd4.initdist, 3, "*", age.inc * X[,,1,1]), c(NG, AG, DS-1)) # add incident infections
       

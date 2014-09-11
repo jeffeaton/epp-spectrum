@@ -22,7 +22,8 @@ fnBSpline <- function(u, q = numSplines, m = 2){
 
   b <- u                              # Now the coefficients
   b[1] <- u[1]
-  b[2] <- u[2]
+  ## b[2] <- u[2]
+  b[2] <- b[1] + u[2]
   for(i in 3:length(b)){
     b[i] <- 2*b[i-1] - b[i-2] + u[i]
   }
@@ -66,6 +67,12 @@ fnANCprev <- function(mod){
 }
 
 prev <- function(mod, age.idx=a15to49.idx, sex.idx=c(m.idx, f.idx)) return(rowSums(mod[,sex.idx, age.idx,-1,])/rowSums(mod[,sex.idx, age.idx,,]))
+
+ageprev <- function(mod, age.idx = 1:dim(mod)[3], agegr.idx = 1:length(age.idx)){
+  hivn <- apply(mod[,,age.idx,1,1], 1:2, tapply, agegr.idx, sum)
+  tot <- apply(rowSums(mod[,,age.idx,,], d=3), 1:2, tapply, agegr.idx, sum)
+  return(aperm(1 - hivn/tot, c(2, 3, 1)))
+}
 
 ## fn15to49inc <- function(mod)
 
