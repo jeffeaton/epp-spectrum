@@ -39,7 +39,7 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
   init.pop <- interpolate.ts(demp$basepop, proj.start)  # linearly interpolate between basepop years
 
   mx.ts <- aperm(interpolate.ts(demp$mx), c(2:3,1))
-  srb.ts <- approx(as.numeric(names(demp$srb)), demp$srb, proj.steps)$y
+  srb.ts <- approx(as.numeric(names(demp$srb)), demp$srb/100, proj.steps)$y
   asfr.ts <- aperm(interpolate.ts(demp$asfr), 2:1)
 
   agesex.incrr <- projp$inc.agerat
@@ -62,7 +62,7 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
 
   fp <- list(dt               = dt,
              proj.steps       = proj.steps,
-             ts.epi.start     = which(proj.steps == time.epi.start),
+             ts.epi.start     = as.integer(which(proj.steps == time.epi.start)),
              init.pop         = init.pop,
              mx.ts            = mx.ts,
              asfr.ts          = asfr.ts,
@@ -74,7 +74,7 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
              cd4.initdist     = projp$cd4.initdist,
              cd4.art.mort     = projp$cd4.art.mort,
              relinfectART     = relinfectART,
-             artelig.idx.ts   = artelig.idx.ts,
+             artelig.idx.ts   = as.integer(artelig.idx.ts),
              artnum.15plus.ts = artnum.15plus.ts)
   class(fp) <- "specfp"
 
@@ -118,8 +118,8 @@ fnSpectrum <- function(param, fp){
     births.by.age <- rowSums(X[f.idx,fert.idx,,])*fp$asfr.ts[,ts]
     frac.hivp.births <- fp$vert.trans*(1.0 - (rowSums(X[f.idx, fert.idx, 1,]))/(fp$fert.rat*rowSums(X[f.idx, fert.idx, -1,]) + rowSums(X[f.idx, fert.idx, 1,]))) # fraction of births HIV+ by age group
 
-    incr(grad[,1,-1,1]) <- sum(births.by.age*frac.hivp.births) * c(fp$srb[ts], 100)/(fp$srb[ts]+100) * fp$cd4.initdist[,1,] # HIV+ children born
-    incr(grad[,1,1,1]) <- sum(births.by.age*(1.0 - frac.hivp.births)) * c(fp$srb.ts[ts], 100)/(fp$srb.ts[ts]+100) # HIV- children born
+    incr(grad[,1,-1,1]) <- sum(births.by.age*frac.hivp.births) * c(fp$srb[ts], 1.0)/(fp$srb[ts]+1.0) * fp$cd4.initdist[,1,] # HIV+ children born
+    incr(grad[,1,1,1]) <- sum(births.by.age*(1.0 - frac.hivp.births)) * c(fp$srb.ts[ts], 1.0)/(fp$srb.ts[ts]+1.0) # HIV- children born
 
 
     if (ts >= fp$ts.epi.start){
