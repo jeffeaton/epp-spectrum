@@ -21,7 +21,7 @@ age15plus.idx <- 4:AG
 
 CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.start+dt*ceiling(1/(2*dt)),
                                  proj.end = projp$yr.end+dt*ceiling(1/(2*dt)),
-                                 relinfectART = 0.3, ts.epi.start = proj.start) {
+                                 relinfectART = 0.3, time.epi.start = proj.start) {
 
   proj.steps <- seq(proj.start, proj.end, dt)
 
@@ -62,7 +62,7 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
 
   fp <- list(dt               = dt,
              proj.steps       = proj.steps,
-             ts.epi.start     = ts.epi.start,
+             ts.epi.start     = which(proj.steps == time.epi.start),
              init.pop         = init.pop,
              mx.ts            = mx.ts,
              asfr.ts          = asfr.ts,
@@ -122,12 +122,11 @@ fnSpectrum <- function(param, fp){
     incr(grad[,1,1,1]) <- sum(births.by.age*(1.0 - frac.hivp.births)) * c(fp$srb.ts[ts], 100)/(fp$srb.ts[ts]+100) # HIV- children born
 
 
-
-    if (proj.steps[ts] >= fp$ts.epi.start){
+    if (ts >= fp$ts.epi.start){
 
       ## incidence
       ## age.inc <- fnAgeInc(X, param$rVec[ts == proj.steps], (ts == t0)*param$iota, param, year.idx)
-      incrate.15to49 <- param$rVec[ts] * (sum(X[,age15to49.idx,-1,1]) + fp$relinfectART*sum(X[,age15to49.idx,-1,-1]))/sum(X[,age15to49.idx,,]) + param$iota*(proj.steps[ts] == fp$ts.epi.start)
+      incrate.15to49 <- param$rVec[ts] * (sum(X[,age15to49.idx,-1,1]) + fp$relinfectART*sum(X[,age15to49.idx,-1,-1]))/sum(X[,age15to49.idx,,]) + param$iota*(ts == fp$ts.epi.start)
       inc.rr <- fp$agesex.incrr.ts[,,ts]
       age.inc <- inc.rr*incrate.15to49/(sum(X[,age15to49.idx,1,1]*inc.rr[,age15to49.idx])/sum(X[,age15to49.idx,1,1]))
 
@@ -158,7 +157,7 @@ fnSpectrum <- function(param, fp){
         incr(grad[,age15plus.idx, ts.elig.idx, 1]) <- -artinit.ann.ts
         incr(grad[,age15plus.idx, ts.elig.idx, 2]) <- artinit.ann.ts
       }  # if (sum(fp$artnum.15plus.ts[,ts]) > 0)
-    }  # if (proj.steps[ts] >= fp$ts.epi.start)
+    }  # if (ts >= fp$ts.epi.start)
 
     ## do projection (euler integration) ##
     incr(X) <- dt*grad
