@@ -1,3 +1,23 @@
+#################################################
+####                                         ####
+####  Compile and load the C implementation  ####
+####                                         ####
+#################################################
+
+setwd("C++")
+system("R CMD SHLIB -lgsl -lgslcblas -lgfortran rlib.cpp model.cpp states.cpp incidence.cpp mvndstpack.f parameters.c")
+setwd("..")
+dyn.load("C++/rlib.so")
+
+
+#############################
+####                     ####
+####  Declare constants  ####
+####                     ####
+#############################
+
+## TODO: Put this in a namespace
+
 "incr<-" <- function(x, value) { x + value } # increment operator, from Hmisc
 
 NG <- 2   # number of sexes
@@ -88,7 +108,16 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
 ####                  ####
 ##########################
 
-fnSpectrum <- function(param, fp){
+fnSpectrum <- function(param, fp, VERSION = "C"){
+
+  
+  if(VERSION != "R"){
+    OUT.STEPS <- sum(fp$proj.steps %% 1 == fp$dt*floor((1/fp$dt)/2))
+    return(.Call("fnSpectrumR", param, fp, OUT.STEPS))
+  }
+
+  
+  ##################################################################################
 
   dt <- fp$dt
   proj.steps <- fp$proj.steps
@@ -133,6 +162,7 @@ fnSpectrum <- function(param, fp){
       incr(grad[,,1,1]) <- -age.inc*X[,,1,1]  # remove incident infections from susceptibles
       incr(grad[,,-1,1]) <- sweep(fp$cd4.initdist, 1:2, age.inc*X[,,1,1], "*")  # add incident infections
 
+      ## print(paste("ts", ts-1, "Xhivn", sum(X[,age15to49.idx,1,1]), "Xhivp_noart", sum(X[,age15to49.idx,-1,1]), "Xart", sum(X[,age15to49.idx,,-1]), "incrate", incrate.15to49))
 
       ## disease progression and mortality
       incr(grad[,,-c(1,DS),1]) <- -fp$cd4.prog * X[,,-c(1, DS),1]  # remove cd4 stage progression (untreated)
@@ -143,6 +173,7 @@ fnSpectrum <- function(param, fp){
 
       ## ART initiation
       if (sum(fp$artnum.15plus.ts[,ts]) > 0){
+
         ts.elig.idx <- fp$artelig.idx.ts[ts]:DS
         artnum.15plus.curr <- rowSums(X[,age15plus.idx,,-1])
         art.15plus.anninits <- (fp$artnum.15plus.ts[,ts] - artnum.15plus.curr)/dt - rowSums(grad[,age15plus.idx,,-1]) # desired change rate minus current exits
@@ -156,6 +187,7 @@ fnSpectrum <- function(param, fp){
 
         incr(grad[,age15plus.idx, ts.elig.idx, 1]) <- -artinit.ann.ts
         incr(grad[,age15plus.idx, ts.elig.idx, 2]) <- artinit.ann.ts
+
       }  # if (sum(fp$artnum.15plus.ts[,ts]) > 0)
     }  # if (ts >= fp$ts.epi.start)
 

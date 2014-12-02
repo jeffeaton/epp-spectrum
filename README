@@ -12,8 +12,10 @@ Eventually this will be extended to include the R-trend and EPP classic models.
 And then it will be extended to incorporate more flexible models for age-
 specific incidence and force of infection.
 
-Currently parameter values are hard-coded based for South Africa based on
-the 2012 Spectrum file.
+
+Country-level input parameter values are read from country Spectrum files
+available from UNAIDS: http://apps.unaids.org/spectrum/
+These can be read into R using: https://github.com/jeffeaton/read-epp-spectrum
 
 
 Files  
@@ -25,21 +27,37 @@ Files
 R/: subdirectory containing the full R implementation of the model.
 -- 
 
-- spectrum.R: R version of spectrum demographic projection model.
+- spectrum.R: R version of spectrum demographic projection model, and call to C version.
+- epp.R: Implementation of r-spline version of EPP model (approximately).
 - likelihood.R: R implementation of the likelihood (incomplete).
-- south-africa-parameters.RData: RData file with parameter values to be loaded.
-- test.R: file to test projection model and R-spline implementation
+- test-spectrum.R: file to test R and C version of Spectrum projection model.
+- test-rmat.R: test age-specific force-of-infection model [!!! CURRENTLY BROKEN]
 
 C++/: subdirectory for the C++ implementation of the model
 ----
 
-- parameters.h: definition of model parameters (hard coded for South Africa
-  at the moment).
+- parameters.h: definition of model parameter structure.
+- parameters.c: functions to allocate and free parameters.
 - states.cpp: state space functions
 - states.h: state space declaration
 - model.cpp: model definition
 - model.h: declares fnSpectrum()
 - rlib.cpp: wrapper function to be loaded into R
-- functions.R: wrapper function to call model
-- test.R: test R implementation of the model
-- test.cpp: test C++ model
+- test.cpp: test C++ model [!!! CURRENTLY BROKEN]
+- mvndstpack.h: header file for C call to multivariate normal cdf.
+- mvndstpack.f: multivariate normal cdf, from http://www.math.wsu.edu/faculty/genz/software/software.html
+
+
+src/: subdirectory for C code [presently contains EPP, evenutally move from C++ directory]
+----
+- epp.c: C implementation of r-spline EPP model.
+
+
+
+TODO:
+
+- Tidy and document everything.
+- Choose either C or C++.
+- Bundle into an R package.
+- Add read-epp-spectrum as submodule.
+- Do research.

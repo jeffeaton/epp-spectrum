@@ -55,13 +55,14 @@ void fnAgeInc(const states y, const struct parameters * p, double age_inc[NG][AG
       }
     double Xtot = Xhivn + Xhivp_noart + Xart;
 
-    double inc_rate_15to49 = p->r * ((Xhivp_noart + relinfect_art * Xart)/Xtot + p->iota_ts);
+    double inc_rate_15to49 = p->rvec[p->ts] * (Xhivp_noart + p->relinfect_art * Xart)/Xtot + p->iota_ts;
+
+    // printf("ts %lu, Xhivn %f, Xhivp_noart %f, Xart %f, incrate %f\n", p->ts, Xhivn, Xhivp_noart, Xart, inc_rate_15to49);
 
     double inc_rr[NG][AG]; // incidence rate ratio by age and sex
-    for(size_t a = 0; a < AG; a++){
-      inc_rr[MALE][a] = p->inc_agerat[MALE][a];
-      inc_rr[FEMALE][a] = p->inc_sexrat * p->inc_agerat[FEMALE][a];
-    }
+    for(size_t g = 0; g < NG; g++)
+      for(size_t a = 0; a < AG; a++)
+	inc_rr[g][a] = p->agesex_incrr[p->ts][g][a];
 
     double Xhivn_incrr = 0;
     for(size_t g = 0; g < NG; g++)
@@ -91,7 +92,7 @@ void fnAgeInc(const states y, const struct parameters * p, double age_inc[NG][AG
     /////////////////////////////////////////////////
 
     double eff_ageprev[NG][AG];
-    fnEffectiveAgePrev(y, relinfect_art, eff_ageprev);
+    fnEffectiveAgePrev(y, p->relinfect_art, eff_ageprev);
 
     // add initial infection pulse
     if(p->iota_ts > 0){
@@ -114,7 +115,7 @@ void fnAgeInc(const states y, const struct parameters * p, double age_inc[NG][AG
 
     for(size_t i = 0; i < NG; i++)
       for(size_t j = 0; j < AG; j++)
-        age_inc[i][j] *= p->r;
+        age_inc[i][j] *= p->rvec[p->ts];
   }
 
   return;

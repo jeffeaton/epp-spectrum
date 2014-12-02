@@ -15,7 +15,7 @@
 ////  Declare functions  ////
 /////////////////////////////
 
-void InitialisePopulation(states * y);
+void InitialisePopulation(states * y, const parameters * param);
 void SetParamTS(const size_t ts, parameters * param);
 void PrepareHIV(states * y);
 void PrepareART(states * y);
@@ -30,6 +30,11 @@ double fn15to49prev(states * y, parameters * param);
 double fnANCprev(states * y, parameters * param);
 
 
+
+// HARD CODED: ART stage progression rate
+const double ART_STAGE_PROG = 2.0;
+
+
 ////////////////////////////
 ////  Define functions  ////
 ////////////////////////////
@@ -39,28 +44,30 @@ void fnSpectrum(struct parameters * param, const size_t numOutDates, double * Xo
   // set parameters
   // struct parameters param;
 
+  double dt = param->dt;
+
   // initialise population
   states current;
-  InitialisePopulation(&current);
+  InitialisePopulation(&current, param);
 
   // simulate the model
-  for(size_t ts = 0; ts < PROJ_STEPS; ts++){
-
-    SetParamTS(ts, param);
-
-    if(ts == ts0)
-      PrepareHIV(&current);
-
-    if(param->art_ts > 0 && current.art_idx != TS)
-      PrepareART(&current);
-
-    current = euler(current, dt, param);
+  for(size_t ts = 0; ts < param->n_proj_steps; ts++){
 
     // record the outputs (midyear)
-    if(ts % ((size_t) (1.0/dt)) + 1 == (1.0/(2*dt))){
+    if(fmod(param->proj_steps[ts], 1.0) == dt * ((size_t) (1.0/(2*dt)))){
       size_t out_idx = (size_t) ts * dt;
       RecordFullOutput(&current, out_idx, numOutDates, Xout);
     }
+
+    SetParamTS(ts, param);
+
+    if(ts == param->ts_epi_start)
+      PrepareHIV(&current);
+
+    if(param->artnum_15plus[param->ts][FEMALE] > 0 && current.art_idx != TS)
+      PrepareART(&current);
+
+    current = euler(current, dt, param);
 
   }
 
@@ -72,19 +79,21 @@ void fnSpectrumPrev(struct parameters * param, struct modprev * out)
   // set parameters
   // struct parameters param;
 
+  double dt = param->dt;
+
   // initialise population
   states current;
-  InitialisePopulation(&current);
+  InitialisePopulation(&current, param);
 
   // simulate the model
-  for(size_t ts = 0; ts < PROJ_STEPS; ts++){
+  for(size_t ts = 0; ts < param->n_proj_steps; ts++){
 
     SetParamTS(ts, param);
 
-    if(ts == ts0)
+    if(ts == param->ts_epi_start)
       PrepareHIV(&current);
 
-    if(param->art_ts > 0 && current.art_idx != TS)
+    if(param->artnum_15plus[param->ts][FEMALE] > 0 && current.art_idx != TS)
       PrepareART(&current);
 
     current = euler(current, dt, param);
@@ -137,11 +146,11 @@ void calcFertility(const states * y, const struct parameters * param, double * n
     double births_ag = 0.0, hivp_ag = 0.0;
     for(size_t m = 0; m < y->hiv_idx; m++)
       for(size_t u = 0; u < y->art_idx; u++){
-        births_ag += asfr[param->year_idx][a] * y->X[FEMALE][IDX_FERT + a][m][u];
+        births_ag += param->asfr[param->ts][a] * y->X[FEMALE][IDX_FERT + a][m][u];
         if(m >= 1)
           hivp_ag += y->X[FEMALE][IDX_FERT + a][m][u];
       }
-    double frac_hivp_moth_ag = 1.0 - y->X[FEMALE][IDX_FERT + a][0][0]/(fert_rat[a]*hivp_ag + y->X[FEMALE][IDX_FERT + a][0][0]);
+    double frac_hivp_moth_ag = 1.0 - y->X[FEMALE][IDX_FERT + a][0][0]/(param->fert_rat[a]*hivp_ag + y->X[FEMALE][IDX_FERT + a][0][0]);
     *frac_hivp_moth += births_ag*frac_hivp_moth_ag;
     *num_births += births_ag;
   }
@@ -178,59 +187,22 @@ states grad(const states y, const struct parameters * param)
     for(size_t a = 0; a < AG; a++)
       for(size_t m = 0; m < y.hiv_idx; m++)
         for(size_t u = 0; u < y.art_idx; u++)
-          out.X[g][a][m][u] -= mx[param->year_idx][g][a] * y.X[g][a][m][u];
+          out.X[g][a][m][u] -= param->mx[param->ts][g][a] * y.X[g][a][m][u];
 
   // fertility
   double num_births, frac_hivp_moth;
   calcFertility(&y, param, &num_births, &frac_hivp_moth);
 
-  out.X[MALE][0][0][0] += num_births * (1.0 - vert_trans*frac_hivp_moth) * srb[param->year_idx] / (srb[param->year_idx] + 1.0);
-  out.X[FEMALE][0][0][0] += num_births * (1.0 - vert_trans*frac_hivp_moth) * 1.0 / (srb[param->year_idx] + 1.0);
+  out.X[MALE][0][0][0] += num_births * (1.0 - param->vert_trans*frac_hivp_moth) * param->srb[param->ts] / (param->srb[param->ts] + 1.0);
+  out.X[FEMALE][0][0][0] += num_births * (1.0 - param->vert_trans*frac_hivp_moth) * 1.0 / (param->srb[param->ts] + 1.0);
   for(size_t m = 1; m < y.hiv_idx; m++){
-    out.X[MALE][0][m][0] += num_births * vert_trans * frac_hivp_moth * cd4_initdist[MALE][0][m-1] * srb[param->year_idx] / (srb[param->year_idx] + 1.0);
-    out.X[FEMALE][0][m][0] += num_births * vert_trans * frac_hivp_moth * cd4_initdist[FEMALE][0][m-1] * 1.0 / (srb[param->year_idx] + 1.0);
+    out.X[MALE][0][m][0] += num_births * param->vert_trans * frac_hivp_moth * param->cd4_initdist[MALE][0][m-1] * param->srb[param->ts] / (param->srb[param->ts] + 1.0);
+    out.X[FEMALE][0][m][0] += num_births * param->vert_trans * frac_hivp_moth * param->cd4_initdist[FEMALE][0][m-1] * 1.0 / (param->srb[param->ts] + 1.0);
   }
 
   if(y.hiv_idx > 1){
 
     // incidence
-    /*
-    double Xhivn = 0.0, Xhivp_noart = 0.0, Xart = 0.0;
-    for(size_t g = 0; g < NG; g++)
-      for(size_t a = IDX_15TO49; a < IDX_15TO49+AG_15TO49; a++){
-        Xhivn += y.X[g][a][0][0];
-        for(size_t m = 1; m < y.hiv_idx; m++){
-          Xhivp_noart += y.X[g][a][m][0];
-          for(size_t u = 1; u < y.art_idx; u++){
-            Xart += y.X[g][a][m][u];
-          }
-        }
-      }
-    double Xtot = Xhivn + Xhivp_noart + Xart;
-
-    double inc_rate_15to49 = param->r * ((Xhivp_noart + relinfect_art * Xart)/Xtot + param->iota);
-
-    double inc_rr[NG][AG]; // incidence rate ratio by age and sex
-    for(size_t a = 0; a < AG; a++){
-      inc_rr[MALE][a] = inc_agerat[param->year_idx][MALE][a];
-      inc_rr[FEMALE][a] = inc_sexrat[param->year_idx] * inc_agerat[param->year_idx][FEMALE][a];
-    }
-
-    double Xhivn_incrr = 0;
-    for(size_t g = 0; g < NG; g++)
-      for(size_t a = IDX_15TO49; a < IDX_15TO49+AG_15TO49; a++){
-        Xhivn_incrr += inc_rr[g][a] * y.X[g][a][0][0];
-      }
-
-    double age_inc[NG][AG];
-    for(size_t g = 0; g < NG; g++)
-      for(size_t a = 0; a < AG; a++){
-        age_inc[g][a] = inc_rate_15to49 * inc_rr[g][a] * Xhivn / Xhivn_incrr;
-        out.X[g][a][0][0] -= age_inc[g][a] * y.X[g][a][0][0];
-        for(size_t m = 1; m < DS; m++)
-          out.X[g][a][m][0] += age_inc[g][a] * cd4_initdist[g][a][m-1] * y.X[g][a][0][0];
-      }
-    */
     double age_inc[NG][AG];
     fnAgeInc(y, param, age_inc);
 
@@ -238,7 +210,7 @@ states grad(const states y, const struct parameters * param)
       for(size_t a = 0; a < AG; a++){
         out.X[g][a][0][0] -= age_inc[g][a] * y.X[g][a][0][0];
         for(size_t m = 1; m < DS; m++)
-          out.X[g][a][m][0] += age_inc[g][a] * cd4_initdist[g][a][m-1] * y.X[g][a][0][0];
+          out.X[g][a][m][0] += age_inc[g][a] * param->cd4_initdist[g][a][m-1] * y.X[g][a][0][0];
       }
 
     // disease progression and mortality
@@ -247,8 +219,8 @@ states grad(const states y, const struct parameters * param)
     for(size_t g = 0; g < NG; g++)
       for(size_t a = 0; a < AG; a++)
         for(size_t m = 1; m < DS-1; m++){
-          out.X[g][a][m][0] -= cd4_prog[g][a][m-1] * y.X[g][a][m][0];
-          out.X[g][a][m+1][0] += cd4_prog[g][a][m-1] * y.X[g][a][m][0];
+          out.X[g][a][m][0] -= param->cd4_prog[g][a][m-1] * y.X[g][a][m][0];
+          out.X[g][a][m+1][0] += param->cd4_prog[g][a][m-1] * y.X[g][a][m][0];
         }
 
     // HIV and ART mortality
@@ -256,7 +228,7 @@ states grad(const states y, const struct parameters * param)
       for(size_t a = 0; a < AG; a++)
         for(size_t m = 1; m < y.hiv_idx; m++)
           for(size_t u = 0; u < y.art_idx; u++)
-            out.X[g][a][m][u] -= cd4_art_mort[g][a][m-1][u] * y.X[g][a][m][u];
+            out.X[g][a][m][u] -= param->cd4_art_mort[g][a][m-1][u] * y.X[g][a][m][u];
 
     if(y.art_idx > 1){
 
@@ -265,37 +237,39 @@ states grad(const states y, const struct parameters * param)
         for(size_t a = 0; a < AG; a++)
           for(size_t m = 1; m < y.hiv_idx; m++)
             for(size_t u = 1; u < TS - 1; u++){
-              out.X[g][a][m][u] -= art_prog[u-1] * y.X[g][a][m][u];
-              out.X[g][a][m][u+1] += art_prog[u-1] * y.X[g][a][m][u];
+              out.X[g][a][m][u] -= ART_STAGE_PROG * y.X[g][a][m][u];
+              out.X[g][a][m][u+1] += ART_STAGE_PROG * y.X[g][a][m][u];
             }
 
       // ART initiation
-      double Xart_15plus = 0.0, Xartelig_15plus = 0.0, expect_mort_artelig_15plus = 0.0, grad_art_cx = 0.0;
-      for(size_t g = 0; g < NG; g++)
+      // (calculated separately for men and women)
+
+      for(size_t g = 0; g < NG; g++){
+	double Xart_15plus = 0.0, Xartelig_15plus = 0.0, expect_mort_artelig_15plus = 0.0, grad_art_cx = 0.0;
         for(size_t a = IDX_15PLUS; a < AG; a++)
           for(size_t m = 1; m < y.hiv_idx; m++){
-            if(m >= artelig_idx[param->year_idx]){
+            if(m >= param->artelig_idx[param->ts]){
               Xartelig_15plus += y.X[g][a][m][0];
-              expect_mort_artelig_15plus += cd4_art_mort[g][a][m-1][0] * y.X[g][a][m][0];
+              expect_mort_artelig_15plus += param->cd4_art_mort[g][a][m-1][0] * y.X[g][a][m][0];
             }
             for(size_t u = 1; u < TS; u++){
               Xart_15plus += y.X[g][a][m][u];
               grad_art_cx += out.X[g][a][m][u];
             }
           }
-
-      double art_15plus_anninit = (param->art_ts  - Xart_15plus) / dt - grad_art_cx; // desired number to initiate per yr (elig * rate)
-
-      for(size_t g = 0; g < NG; g++)
-        for(size_t a = IDX_15PLUS; a < AG; a++)
-          for(size_t m = artelig_idx[param->year_idx]; m < DS; m++){
-            double art_initrate = art_15plus_anninit * 0.5 * (1.0/Xartelig_15plus + cd4_art_mort[g][a][m-1][0] / expect_mort_artelig_15plus);
-            if(art_initrate > 1.0/dt)
-              art_initrate = 1.0/dt;
-            out.X[g][a][m][0] -= art_initrate * y.X[g][a][m][0];
-            out.X[g][a][m][1] += art_initrate * y.X[g][a][m][0];
-          }
-
+	
+	double art_15plus_anninit = (param->artnum_15plus[param->ts][g]  - Xart_15plus) / param->dt - grad_art_cx; // desired number to initiate per yr (elig * rate)
+	
+	for(size_t a = IDX_15PLUS; a < AG; a++)
+	  for(size_t m = param->artelig_idx[param->ts]; m < DS; m++){
+	    double art_initrate = art_15plus_anninit * 0.5 * (1.0/Xartelig_15plus + param->cd4_art_mort[g][a][m-1][0] / expect_mort_artelig_15plus);
+	    if(art_initrate > 1.0/param->dt)
+	      art_initrate = 1.0/param->dt;
+	    out.X[g][a][m][0] -= art_initrate * y.X[g][a][m][0];
+	    out.X[g][a][m][1] += art_initrate * y.X[g][a][m][0];
+	  }
+      }
+      
     } // if(y.art_idx > 1)
 
   } // if(y.hiv_idx > 1)
@@ -303,7 +277,7 @@ states grad(const states y, const struct parameters * param)
   return out;
 }
 
-void InitialisePopulation(states * y)
+void InitialisePopulation(states * y, const parameters * param)
 {
   y->hiv_idx = 1;
   y->art_idx = 1;
@@ -315,26 +289,21 @@ void InitialisePopulation(states * y)
   
   for(size_t g = 0; g < NG; g++)
     for(size_t a = 0; a < AG; a++)
-      y->X[g][a][0][0] = init_pop[g][a];
+      y->X[g][a][0][0] = param->init_pop[g][a];
 
   return;
 }
 
 void SetParamTS(const size_t ts, parameters * param)
 {
-    param->year_idx = (size_t) ts*dt;
-    param->r = param->rVec[ts];
-
-    // determine desired number on ART
-    double frac_yr = fmod(ts*dt, 1.0) + dt;
-    param->art_ts = frac_yr * artnum_15plus[param->year_idx] + (1.0 - frac_yr) * ((param->year_idx==0)?0.0:artnum_15plus[param->year_idx-1]);
-
-    if(ts == ts0)
+  param->ts = ts;
+    
+  if(ts == param->ts_epi_start)
       param->iota_ts = param->iota;
-    else 
-      param->iota_ts = 0;
+  else 
+    param->iota_ts = 0;
 
-    return;
+  return;
 }
 
 void PrepareHIV(states * y)
@@ -414,7 +383,7 @@ void RecordFullOutput(states * y, const size_t outIdx, const size_t numOutDates,
 
 #define SPLINE_ORDER 4
 
-void fnBSpline(const double * u, const size_t numSplines, const size_t numSplineSteps, double * rVec)
+void fnBSpline(const double * u, const size_t numSplines, const size_t numSplineSteps, double * rvec)
 {
   
   const size_t nbreaks = numSplines - SPLINE_ORDER + 2;
@@ -443,8 +412,8 @@ void fnBSpline(const double * u, const size_t numSplines, const size_t numSpline
     gsl_vector_set(coefs, i, 2*gsl_vector_get(coefs, i-1) - gsl_vector_get(coefs, i-2) + u[i]);
   }
   
-  gsl_vector_view vw_rVec = gsl_vector_view_array(rVec, numSplineSteps);
-  gsl_blas_dgemv(CblasNoTrans, 1.0, designMat, coefs, 0.0, &vw_rVec.vector);
+  gsl_vector_view vw_rvec = gsl_vector_view_array(rvec, numSplineSteps);
+  gsl_blas_dgemv(CblasNoTrans, 1.0, designMat, coefs, 0.0, &vw_rvec.vector);
   
   gsl_vector_free(coefs);
   gsl_bspline_free(w);
@@ -458,9 +427,11 @@ void fnBSpline(const double * u, const size_t numSplines, const size_t numSpline
    fnGenRVec allocates memory for r-vector, calls fnBSpline to generate spline
    (appropriately adusted for t0).
 
-   Returns pointer to rVec if all values of rVec are between [0, maxR), else frees
-   the memory allocated for rVec and returns NULL
+   Returns pointer to rvec if all values of rvec are between [0, maxR), else frees
+   the memory allocated for rvec and returns NULL
 */
+
+/*
 double * fnGenRVec(const double * u, const size_t numSplines, const double maxR)
 {
   double * rVec = (double *) calloc(PROJ_STEPS, sizeof(double));
@@ -480,3 +451,4 @@ void fnFreeRVec(double * rVec)
   free(rVec);
   return;
 }
+*/

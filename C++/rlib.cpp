@@ -7,18 +7,19 @@
 #include "incidence.h"
 
 void setParameters(SEXP s_param, struct parameters * param);
+void setFixedParameters(SEXP s_fixed_param, struct parameters * param);
 SEXP getListElement(SEXP list, const char *str);
 
 
 extern "C" {
 
-  SEXP fnSpectrumR(SEXP s_param, SEXP s_numOutDates)
+  SEXP fnSpectrumR(SEXP s_param, SEXP s_fixpar, SEXP s_numOutDates)
   {
 
     // set parameter values
-    struct parameters param;
-
-    setParameters(s_param, &param);
+    struct parameters * param = alloc_parameters(length(getListElement(s_fixpar, "proj.steps")));
+    setFixedParameters(s_fixpar, param);
+    setParameters(s_param, param);
 
     // prepare output array
     PROTECT(s_numOutDates = coerceVector(s_numOutDates, INTSXP));
@@ -33,13 +34,11 @@ extern "C" {
     setAttrib(s_Xout, R_DimSymbol, s_Xout_dim);
     double * Xout = REAL(s_Xout);
 
-    fnSpectrum(&param, *INTEGER(s_numOutDates), Xout);
+    fnSpectrum(param, *INTEGER(s_numOutDates), Xout);
 
-
-    // fnSpectrum(*iota, rVec, (unsigned int) *numOutDates, Xout);
 
     UNPROTECT(3);
-    // free(param.rVec);
+    free_parameters(param);
 
     return s_Xout;
   }
@@ -48,7 +47,7 @@ extern "C" {
   {
     double rmat[AG][AG];
     createRmat(*REAL(s_m_mean), *REAL(s_m_sd), *REAL(s_f_mean), *REAL(s_f_sd), *REAL(s_corr), rmat);
-
+    
     // copy to output
     SEXP s_rmat;
     PROTECT(s_rmat = allocMatrix(REALSXP, AG, AG));
@@ -56,13 +55,11 @@ extern "C" {
     for(size_t i = 0; i < AG; i++)
       for(size_t j = 0; j < AG; j++)
         ptr_rmat[i + AG*j] = rmat[i][j];
-
+    
     UNPROTECT(1);
     return(s_rmat);
   }
-
-
-
+  
 } // extern "C"
 
 
@@ -85,7 +82,7 @@ SEXP getListElement(SEXP list, const char *str)
 void setParameters(SEXP s_param, struct parameters * param)
 {
 
-  SEXP s_iota, s_rVec, s_inc_sexrat, s_inc_agerat_male, s_inc_agerat_female, s_rmat;
+  SEXP s_iota, s_rVec, s_inc_sexrat, s_inc_agerat, s_rmat;
 
   // iota
   s_iota = getListElement(s_param, "iota");
@@ -94,41 +91,40 @@ void setParameters(SEXP s_param, struct parameters * param)
   else
     param->iota = *REAL(s_iota);
 
-  // rVec
+   // rvec
   s_rVec = getListElement(s_param, "rVec");
   if(s_rVec == R_NilValue)
     error("rVec not found");
   else{
-    param->rVec = (double *) malloc(length(s_rVec) * sizeof(double));
-    for(size_t i = 0; i < length(s_rVec); i++){
-      double * ptr_rVec = REAL(s_rVec);
-      param->rVec[i] = ptr_rVec[i];
-    }
+    double * ptr_rVec = REAL(s_rVec);
+    for(size_t i = 0; i < param->n_proj_steps; i++)
+      param->rvec[i] = ptr_rVec[i];
   }
 
+  param->incmod = INC_INCRR;
+
   // incidence model
-  s_inc_agerat_male = getListElement(s_param, "inc.agerat.male");
-  s_inc_agerat_female = getListElement(s_param, "inc.agerat.female");
+  /* s_inc_agerat = getListElement(s_param, "inc.agerat");
   s_inc_sexrat = getListElement(s_param, "inc.sexrat");
   s_rmat = getListElement(s_param, "Rmat");
 
-  if(s_inc_agerat_male != R_NilValue &&
-     s_inc_agerat_female != R_NilValue &&
+  if(s_inc_agerat != R_NilValue &&
      s_inc_sexrat != R_NilValue &&
      s_rmat == R_NilValue){
     param->incmod = INC_INCRR;
 
-    param->inc_sexrat = *REAL(s_inc_sexrat);
+    double * ptr_inc_sexrat = REAL(s_inc_sexrat);
+    double * ptr_inc_agerat = REAL(s_inc_agerat);
 
-    double * ptr_inc_agerat_male = REAL(s_inc_agerat_male);
-    double * ptr_inc_agerat_female = REAL(s_inc_agerat_female);
-    for(size_t i = 0; i < AG; i++){
-      param->inc_agerat[MALE][i] = ptr_inc_agerat_male[i];
-      param->inc_agerat[FEMALE][i] = ptr_inc_agerat_female[i];
-    }
+    for(size_t i = 0; i < param->n_proj_steps; i++)
+      for(size_t a = 0; a < AG; a++){
+        size_t year_idx = (size_t) i*param->dt;
+        param->agesex_incrr[i][MALE][a] = ptr_inc_agerat[MALE + a*NG + year_idx*NG*AG];
+        param->agesex_incrr[i][FEMALE][a] = ptr_inc_sexrat[year_idx] * ptr_inc_agerat[FEMALE + a*NG + year_idx*NG*AG];
+      }
 
-  } else if(s_inc_agerat_male == R_NilValue &&
-	    s_inc_agerat_female == R_NilValue &&
+
+  } else if(s_inc_agerat == R_NilValue &&
             s_inc_sexrat == R_NilValue &&
             s_rmat != R_NilValue){
 
@@ -141,6 +137,96 @@ void setParameters(SEXP s_param, struct parameters * param)
 
   } else
     error("incidence model not found");
+  */
+
+  return;
+}
+
+void setFixedParameters(SEXP s_fixed_param, struct parameters * param)
+{
+
+  // TODO: Two potential efficiency improvemnets would be to access the
+  //       list elements by index rather than name (no searching), and
+  //       to reformulate parameters to assign them as pointers to
+  //       contiguous blocks of memory rather than copying values into
+  //       new arrays. I doubt either of these will have massive effects
+  //       though, so not high priority.
+
+
+  double *ptr_item;
+
+  size_t nsteps = length(getListElement(s_fixed_param, "proj.steps"));
+  param->n_proj_steps = nsteps;
+
+  param->dt = *REAL(getListElement(s_fixed_param, "dt"));
+
+  ptr_item = REAL(getListElement(s_fixed_param, "proj.steps"));
+  for(size_t i = 0; i < nsteps; i++)
+    param->proj_steps[i] = ptr_item[i];
+
+  param->ts_epi_start = *INTEGER(getListElement(s_fixed_param, "ts.epi.start")) - 1; // -1 for 0-based indexing
+
+  ptr_item = REAL(getListElement(s_fixed_param, "init.pop"));  // initial population size
+  for(size_t g = 0; g < NG; g++)
+    for(size_t a = 0; a < AG; a++)
+      param->init_pop[g][a] = ptr_item[g + a*NG];
+
+  ptr_item = REAL(getListElement(s_fixed_param, "mx.ts"));
+  for(size_t i = 0; i < nsteps; i++)
+    for(size_t g = 0; g < NG; g++)
+      for(size_t a = 0; a < AG; a++)
+        param->mx[i][g][a] = ptr_item[g + a*NG + i*NG*AG];
+
+  ptr_item = REAL(getListElement(s_fixed_param, "asfr.ts"));
+  for(size_t i = 0; i < nsteps; i++)
+    for(size_t a = 0; a < AG_FERT; a++)
+      param->asfr[i][a] = ptr_item[a + i*AG_FERT];
+
+  ptr_item = REAL(getListElement(s_fixed_param, "srb.ts"));
+  for(size_t i = 0; i < nsteps; i++)
+    param->srb[i] = ptr_item[i];
+
+  ptr_item = REAL(getListElement(s_fixed_param, "agesex.incrr.ts"));
+  for(size_t i = 0; i < nsteps; i++)
+    for(size_t g = 0; g < NG; g++)
+      for(size_t a = 0; a < AG; a++)
+        param->agesex_incrr[i][g][a] = ptr_item[g + a*NG + i*NG*AG];
+
+  ptr_item = REAL(getListElement(s_fixed_param, "fert.rat"));
+  for(size_t a = 0; a < AG_FERT; a++)
+    param->fert_rat[a] = ptr_item[a];
+
+  param->vert_trans = *REAL(getListElement(s_fixed_param, "vert.trans"));
+
+  ptr_item = REAL(getListElement(s_fixed_param, "cd4.prog"));
+  for(size_t g = 0; g < NG; g++)
+    for(size_t a = 0; a < AG; a++)
+      for(size_t m = 0; m < (DS-2); m++)
+        param->cd4_prog[g][a][m] = ptr_item[g + a*NG + m*NG*AG];
+
+  ptr_item = REAL(getListElement(s_fixed_param, "cd4.initdist"));
+  for(size_t g = 0; g < NG; g++)
+    for(size_t a = 0; a < AG; a++)
+      for(size_t m = 0; m < (DS-1); m++)
+        param->cd4_initdist[g][a][m] = ptr_item[g + a*NG + m*NG*AG];
+
+  ptr_item = REAL(getListElement(s_fixed_param, "cd4.art.mort"));
+  for(size_t g = 0; g < NG; g++)
+    for(size_t a = 0; a < AG; a++)
+      for(size_t m = 0; m < (DS-1); m++)
+        for(size_t u = 0; u < TS; u++)
+          param->cd4_art_mort[g][a][m][u] = ptr_item[g + a*NG + m*NG*AG + u*NG*AG*(DS-1)];
+
+  param->relinfect_art = *REAL(getListElement(s_fixed_param, "relinfectART"));
+
+  int *ptr_int = INTEGER(getListElement(s_fixed_param, "artelig.idx.ts"));
+  for(size_t i = 0; i < nsteps; i++)
+    param->artelig_idx[i] = ptr_int[i] - 1; // -1 for 0-based indexing
+
+  ptr_item = REAL(getListElement(s_fixed_param, "artnum.15plus.ts"));
+  for(size_t i = 0; i < nsteps; i++)
+    for(size_t g = 0; g < NG; g++)
+      param->artnum_15plus[i][g] = ptr_item[g + i*NG];
 
   return;
 }

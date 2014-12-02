@@ -3,8 +3,18 @@ library(mvtnorm)
 logit <- function(p){ return(log(p / (1-p))) }
 invlogit <- function(x){ return(exp(x) / (1+exp(x))) }
 
-create.Rmat <- function(m.mean, m.sd, f.mean, f.sd, corr, margdist = "gamma", copula = "gaussian"){
+create.Rmat <- function(m.mean, m.sd, f.mean, f.sd, corr, margdist = "gamma", copula = "gaussian", VERSION="C"){
 
+  if(VERSION != "R"){
+    if(margdist != "gamma" || copula != "gaussian")
+      stop("not implemented")
+
+    return(.Call("createRmatR", m.mean, m.sd, f.mean, f.sd, corr))
+  }
+
+  ##################################################################################
+
+  
   Rmat <- matrix(0, AG, AG)
   
   ## get the quantiles of the marginal distribution
