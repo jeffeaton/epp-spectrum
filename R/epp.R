@@ -9,7 +9,7 @@ fnCreateEPPSubpops <- function(epp.input, epp.subpops, epp.data){
   ## EPP implmentation from Dan Hogan's code distributes ART according to relative average ANC prevalence in each subpopulation
   ## A more representative approach might be to apportion this based on national survey prevalence in each subpopulation
   ancprev.means <- sapply(lapply(epp.data, "[[", "anc.prev"), mean, na.rm=TRUE)
-  subpop.dist <- prop.table(sapply(epp.subpops$subpops, "[[", "pop15to49")[epp.subpops$total$year == 2010])  # population distribution in 2010 (Dan's code)
+  subpop.dist <- prop.table(sapply(epp.subpops$subpops, "[[", "pop15to49")[epp.subpops$total$year == 2010,])  # population distribution in 2010 (Dan's code)
   art.dist <- prop.table(subpop.dist * ancprev.means)
 
   epp.subpop.input <- list()

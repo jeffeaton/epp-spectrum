@@ -5,7 +5,7 @@
 #################################################
 
 setwd("C++")
-system("R CMD SHLIB -lgsl -lgslcblas -lgfortran rlib.cpp model.cpp states.cpp incidence.cpp mvndstpack.f parameters.c")
+system("rm *.o; R CMD SHLIB -lgsl -lgslcblas -lgfortran rlib.cpp model.cpp states.cpp incidence.cpp mvndstpack.f parameters.cpp")
 setwd("..")
 dyn.load("C++/rlib.so")
 
@@ -38,6 +38,8 @@ age15plus.idx <- 4:AG
 ####  Create fixed model parameters  ####
 ####                                 ####
 #########################################
+
+library(splines)
 
 CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.start+dt*ceiling(1/(2*dt)),
                                  proj.end = projp$yr.end+dt*ceiling(1/(2*dt)),
@@ -80,6 +82,17 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
   artnum.15plus.ts <- rbind("Male"  =approx(as.numeric(names(m.artnum.15plus))+1-dt, m.artnum.15plus, proj.steps, rule=2)$y,
                             "Female"=approx(as.numeric(names(f.artnum.15plus))+1-dt, f.artnum.15plus, proj.steps, rule=2)$y)
 
+
+  ###########################
+  ##  r-spline parameters  ##
+  ###########################
+
+  numKnots <- 7
+  proj.dur <- diff(range(proj.steps))
+  rvec.knots <- seq(min(proj.steps) - 3*proj.dur/(numKnots-3), max(proj.steps) + 3*proj.dur/(numKnots-3), proj.dur/(numKnots-3))
+  rvec.spldes <- splineDesign(rvec.knots, proj.steps)
+
+
   fp <- list(dt               = dt,
              proj.steps       = proj.steps,
              ts.epi.start     = as.integer(which(proj.steps == time.epi.start)),
@@ -95,7 +108,9 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
              cd4.art.mort     = projp$cd4.art.mort,
              relinfectART     = relinfectART,
              artelig.idx.ts   = as.integer(artelig.idx.ts),
-             artnum.15plus.ts = artnum.15plus.ts)
+             artnum.15plus.ts = artnum.15plus.ts,
+             numKnots         = numKnots,
+             rvec.spldes      = rvec.spldes)
   class(fp) <- "specfp"
 
   return(fp)
@@ -155,7 +170,7 @@ fnSpectrum <- function(param, fp, VERSION = "C"){
 
       ## incidence
       ## age.inc <- fnAgeInc(X, param$rVec[ts == proj.steps], (ts == t0)*param$iota, param, year.idx)
-      incrate.15to49 <- param$rVec[ts] * (sum(X[,age15to49.idx,-1,1]) + fp$relinfectART*sum(X[,age15to49.idx,-1,-1]))/sum(X[,age15to49.idx,,]) + param$iota*(ts == fp$ts.epi.start)
+      incrate.15to49 <- param$rvec[ts] * (sum(X[,age15to49.idx,-1,1]) + fp$relinfectART*sum(X[,age15to49.idx,-1,-1]))/sum(X[,age15to49.idx,,]) + param$iota*(ts == fp$ts.epi.start)
       inc.rr <- fp$agesex.incrr.ts[,,ts]
       age.inc <- inc.rr*incrate.15to49/(sum(X[,age15to49.idx,1,1]*inc.rr[,age15to49.idx])/sum(X[,age15to49.idx,1,1]))
 

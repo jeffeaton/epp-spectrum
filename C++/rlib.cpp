@@ -82,7 +82,7 @@ SEXP getListElement(SEXP list, const char *str)
 void setParameters(SEXP s_param, struct parameters * param)
 {
 
-  SEXP s_iota, s_rVec, s_inc_sexrat, s_inc_agerat, s_rmat;
+  SEXP s_iota, s_rvec, s_inc_sexrat, s_inc_agerat, s_rmat;
 
   // iota
   s_iota = getListElement(s_param, "iota");
@@ -92,13 +92,13 @@ void setParameters(SEXP s_param, struct parameters * param)
     param->iota = *REAL(s_iota);
 
    // rvec
-  s_rVec = getListElement(s_param, "rVec");
-  if(s_rVec == R_NilValue)
-    error("rVec not found");
+  s_rvec = getListElement(s_param, "rvec");
+  if(s_rvec == R_NilValue)
+    error("rvec not found");
   else{
-    double * ptr_rVec = REAL(s_rVec);
+    double * ptr_rvec = REAL(s_rvec);
     for(size_t i = 0; i < param->n_proj_steps; i++)
-      param->rvec[i] = ptr_rVec[i];
+      param->rvec[i] = ptr_rvec[i];
   }
 
   param->incmod = INC_INCRR;
