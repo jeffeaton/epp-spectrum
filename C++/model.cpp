@@ -143,14 +143,18 @@ void calcFertility(const states * y, const struct parameters * param, double * n
   *frac_hivp_moth = 0.0;
 
   for(size_t a = 0; a < AG_FERT; a++){
-    double births_ag = 0.0, hivp_ag = 0.0;
+    double births_ag = 0.0, weight_hivp_ag = 0.0;
     for(size_t m = 0; m < y->hiv_idx; m++)
       for(size_t u = 0; u < y->art_idx; u++){
         births_ag += param->asfr[param->ts][a] * y->X[FEMALE][IDX_FERT + a][m][u];
-        if(m >= 1)
-          hivp_ag += y->X[FEMALE][IDX_FERT + a][m][u];
+        if(m >= 1){
+	  if(u < (TS-1))  // HARD CODED: If on ART < 1 year, same fertility as not on ART, constant subfertility for ART > 1 year
+	    weight_hivp_ag += y->X[FEMALE][IDX_FERT + a][m][u] * param->age_fertrat[a] * param->stage_fertrat[m-1];
+	  else
+	    weight_hivp_ag += y->X[FEMALE][IDX_FERT + a][m][u] * param->age_fertrat[a] * param->art_fertrat;
+	}
       }
-    double frac_hivp_moth_ag = 1.0 - y->X[FEMALE][IDX_FERT + a][0][0]/(param->fert_rat[a]*hivp_ag + y->X[FEMALE][IDX_FERT + a][0][0]);
+    double frac_hivp_moth_ag = 1.0 - y->X[FEMALE][IDX_FERT + a][0][0]/(weight_hivp_ag + y->X[FEMALE][IDX_FERT + a][0][0]);
     *frac_hivp_moth += births_ag*frac_hivp_moth_ag;
     *num_births += births_ag;
   }

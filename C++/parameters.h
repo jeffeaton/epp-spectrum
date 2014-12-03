@@ -56,7 +56,9 @@ struct parameters {
   double (*agesex_incrr)[NG][AG];
   double *rvec;
 
-  double fert_rat[AG_FERT];
+  double age_fertrat[AG_FERT];
+  double stage_fertrat[DS-1];
+  double art_fertrat;
 
   // progression parameters
   double cd4_initdist[NG][AG][DS-1];

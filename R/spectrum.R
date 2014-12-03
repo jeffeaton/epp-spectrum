@@ -101,7 +101,9 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
              asfr.ts          = asfr.ts,
              srb.ts           = srb.ts,
              agesex.incrr.ts  = agesex.incrr.ts,
-             fert.rat         = projp$fert.rat,
+             age.fertrat      = projp$fert.rat,
+             stage.fertrat    = c(1.25, 0.6, 0.4, 0.4, 0.3, 0.3, 0.3),
+             art.fertrat      = 0.6,
              vert.trans       = 0,
              cd4.prog         = projp$cd4.prog,
              cd4.initdist     = projp$cd4.initdist,
@@ -113,6 +115,23 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
              rvec.spldes      = rvec.spldes)
   class(fp) <- "specfp"
 
+  return(fp)
+}
+
+update.specfp <- function(fp, ..., keep.attr=TRUE){
+  ## adapted from 'survey' package: https://github.com/cran/survey/blob/master/R/survey.R
+
+  dots<-substitute(list(...))[-1]
+  newnames<-names(dots)
+  
+  for(j in seq(along=dots)){
+    if(keep.attr)
+      attr <- attributes(fp[[newnames[j]]])
+    fp[[newnames[j]]]<-eval(dots[[j]],fp, parent.frame())
+    if(keep.attr)
+      attributes(fp[[newnames[j]]]) <- attr
+  }
+  
   return(fp)
 }
 
@@ -160,7 +179,9 @@ fnSpectrum <- function(param, fp, VERSION = "C"){
 
     ## fertility
     births.by.age <- rowSums(X[f.idx,fert.idx,,])*fp$asfr.ts[,ts]
-    frac.hivp.births <- fp$vert.trans*(1.0 - (rowSums(X[f.idx, fert.idx, 1,]))/(fp$fert.rat*rowSums(X[f.idx, fert.idx, -1,]) + rowSums(X[f.idx, fert.idx, 1,]))) # fraction of births HIV+ by age group
+    hivn.by.age <- rowSums(X[f.idx, fert.idx, 1,])
+    weighted.hivp.by.age <- (rowSums(sweep(rowSums(X[f.idx, fert.idx, -1,1:3],,2), 2, fp$stage.fertrat, "*")) + fp$art.fertrat * rowSums(X[f.idx, fert.idx,-1,4])) * fp$age.fertrat
+    frac.hivp.births <- fp$vert.trans * weighted.hivp.by.age / (weighted.hivp.by.age + hivn.by.age)  # fraction of births HIV+ by age group
 
     incr(grad[,1,-1,1]) <- sum(births.by.age*frac.hivp.births) * c(fp$srb[ts], 1.0)/(fp$srb[ts]+1.0) * fp$cd4.initdist[,1,] # HIV+ children born
     incr(grad[,1,1,1]) <- sum(births.by.age*(1.0 - frac.hivp.births)) * c(fp$srb.ts[ts], 1.0)/(fp$srb.ts[ts]+1.0) # HIV- children born

@@ -192,10 +192,16 @@ void setFixedParameters(SEXP s_fixed_param, struct parameters * param)
       for(size_t a = 0; a < AG; a++)
         param->agesex_incrr[i][g][a] = ptr_item[g + a*NG + i*NG*AG];
 
-  ptr_item = REAL(getListElement(s_fixed_param, "fert.rat"));
+  ptr_item = REAL(getListElement(s_fixed_param, "age.fertrat"));
   for(size_t a = 0; a < AG_FERT; a++)
-    param->fert_rat[a] = ptr_item[a];
+    param->age_fertrat[a] = ptr_item[a];
 
+  ptr_item = REAL(getListElement(s_fixed_param, "stage.fertrat"));
+  for(size_t m = 0; m < (DS-1); m++)
+    param->stage_fertrat[m] = ptr_item[m];
+  
+  param->art_fertrat = *REAL(getListElement(s_fixed_param, "art.fertrat"));
+    
   param->vert_trans = *REAL(getListElement(s_fixed_param, "vert.trans"));
 
   ptr_item = REAL(getListElement(s_fixed_param, "cd4.prog"));
