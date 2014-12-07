@@ -147,7 +147,9 @@ fnSpectrum <- function(param, fp, VERSION = "C"){
   
   if(VERSION != "R"){
     OUT.STEPS <- sum(fp$proj.steps %% 1 == fp$dt*floor((1/fp$dt)/2))
-    return(.Call("fnSpectrumR", param, fp, OUT.STEPS))
+    mod <- .Call("fnSpectrumR", param, fp, OUT.STEPS)
+    class(mod) <- "spec"
+    return(mod)
   }
 
   
@@ -231,6 +233,7 @@ fnSpectrum <- function(param, fp, VERSION = "C"){
     incr(X) <- dt*grad
   } # for(ts in 1:length(proj.steps))
 
+  class(X.out) <- "spec"
   return(X.out)
 }
 
@@ -239,6 +242,6 @@ fnSpectrum <- function(param, fp, VERSION = "C"){
 ####  Analysis functions  ####
 ##############################
 
-prev <- function(mod, age.idx=age15to49.idx, sex.idx=c(m.idx, f.idx)){
+prev.spec <- function(mod, age.idx=age15to49.idx, sex.idx=c(m.idx, f.idx)){
   return(rowSums(mod[,sex.idx, age.idx,-1,])/rowSums(mod[,sex.idx, age.idx,,]))
 }

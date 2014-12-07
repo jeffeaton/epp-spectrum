@@ -84,7 +84,7 @@ fnCreateEPPFixPar <- function(epp.input, proj.start = epp.input$start.year, proj
   rvec.knots <- seq(min(proj.steps) - 3*proj.dur/(numKnots-3), max(proj.steps) + 3*proj.dur/(numKnots-3), proj.dur/(numKnots-3))
   rvec.spldes <- splineDesign(rvec.knots, proj.steps)
 
-  return(list(proj.steps      = proj.steps,
+  val <- list(proj.steps      = proj.steps,
               tsEpidemicStart = tsEpidemicStart,
               dt              = dt,
               epp.pop.ts      = epp.pop.ts,
@@ -95,7 +95,10 @@ fnCreateEPPFixPar <- function(epp.input, proj.start = epp.input$start.year, proj
               cd4artmort      = cd4artmort,
               relinfectART    = relinfectART,
               numKnots        = numKnots,
-              rvec.spldes = rvec.spldes))
+              rvec.spldes     = rvec.spldes)
+
+  class(val) <- "eppfp"
+  return(val)
 }
 
 
@@ -114,11 +117,14 @@ TS <- 4   # ART treatment duration stages
 fnEPP <- function(param, fp, VERSION = "C"){
 
 
-  if(VERSION != "R")
-    return(.Call("fnEPP", fp$epp.pop.ts, fp$proj.steps, fp$dt,
+  if(VERSION != "R"){
+    mod <- .Call("fnEPP", fp$epp.pop.ts, fp$proj.steps, fp$dt,
                  param$rvec, param$iota, fp$relinfectART, as.numeric(fp$tsEpidemicStart),
                  fp$cd4init, fp$cd4prog, fp$cd4artmort,
-                 fp$artnum.ts, as.integer(fp$artelig.idx.ts)))
+                 fp$artnum.ts, as.integer(fp$artelig.idx.ts))
+    class(mod) <- "epp"
+    return(mod)
+  }
 
 ##################################################################################
 
@@ -183,23 +189,24 @@ fnEPP <- function(param, fp, VERSION = "C"){
 
   } # for(ts in proj.steps)
 
+  class(Xout) <- "epp"
   return(Xout)
 }
 
-fnPrev <- function(mod){
+prev.epp <- function(mod){
   return(rowSums(mod[,-1,])/rowSums(mod))
 }
 
-fnPregPrev <- function(mod, cd4stage.weights=c(1.3, 0.6, 0.1, 0.1, 0.0, 0.0, 0.0), art1yr.weight = 0.1){
+fnPregPrev.epp <- function(mod, fp){
 
   pregweight.hivn <- mod[,1,1]
-  pregweight.hivp <- rowSums(sweep(mod[,-1,1:3], 2, cd4stage.weights, "*"))
-  pregweight.art1yr <- rowSums(mod[,-1,4]) * art1yr.weight
+  pregweight.hivp <- rowSums(sweep(mod[,-1,1:3], 2, fp$cd4stage.weight, "*"))
+  pregweight.art1yr <- rowSums(mod[,-1,4]) * fp$art1yr.weight
 
   return((pregweight.hivp+pregweight.art1yr)/(pregweight.hivn+pregweight.hivp+pregweight.art1yr))
 }
 
-fnInc <- function(mod, param, fp){
+incid.epp <- function(mod, param, fp){
   param$rvec[fp$proj.steps %% 1 == 0.5] * (rowSums(mod[,-1,1]) + fp$relinfectART * rowSums(mod[,-1,1])) / rowSums(mod)
 }
 
