@@ -1,12 +1,9 @@
-#################################################
-####                                         ####
-####  Compile and load the C implementation  ####
-####                                         ####
-#################################################
+####################################
+####                            ####
+####  Load the C share library  ####
+####                            ####
+####################################
 
-setwd("C++")
-system("rm *.o; R CMD SHLIB -lgsl -lgslcblas -lgfortran rlib.cpp model.cpp states.cpp incidence.cpp mvndstpack.f parameters.cpp")
-setwd("..")
 dyn.load("C++/rlib.so")
 
 
@@ -244,4 +241,16 @@ fnSpectrum <- function(param, fp, VERSION = "C"){
 
 prev.spec <- function(mod, age.idx=age15to49.idx, sex.idx=c(m.idx, f.idx)){
   return(rowSums(mod[,sex.idx, age.idx,-1,])/rowSums(mod[,sex.idx, age.idx,,]))
+}
+
+fnPregPrev.spec <- function(mod, fp){
+  births.by.age <- t(fp$asfr.ts[,fp$proj.steps %% 1 == 0.5]) * rowSums(mod[,f.idx, fert.idx,,],,2)
+  hivn.by.age <- rowSums(mod[,f.idx, fert.idx, 1,],,2)
+  weighted.hivp.by.age <- sweep(rowSums(sweep(rowSums(mod[,f.idx, fert.idx, -1,1:3],,3), 3, fp$stage.fertrat, "*"),,2) + fp$art.fertrat * rowSums(mod[,f.idx, fert.idx,-1,4],,2), 2, fp$age.fertrat, "*")
+  frac.hivp.moth <- weighted.hivp.by.age/(weighted.hivp.by.age+hivn.by.age)
+  return(rowSums(births.by.age * frac.hivp.moth) / rowSums(births.by.age))
+}
+
+incid.spec <- function(mod, param, fp, age.idx=age15to49.idx, sex.idx=c(m.idx, f.idx)){
+  param$rvec[fp$proj.steps %% 1 == 0.5] * (rowSums(mod[, , age15to49.idx, -1, 1]) + fp$relinfectART * rowSums(mod[, , age15to49.idx, -1, -1])) / rowSums(mod[,, age15to49.idx,1,])
 }

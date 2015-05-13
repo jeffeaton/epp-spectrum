@@ -5,3 +5,9 @@
 *.out
 */.Rhistory
 */.RData
+/analyses/cluster/*
+*.RData
+
+*.pdf
+
+*.png
