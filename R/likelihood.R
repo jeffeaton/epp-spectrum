@@ -23,7 +23,7 @@ tau2.prior.rate <- 0.5
 invGammaParameter <- 0.001   #Inverse gamma parameter for tau^2 prior for spline
 ancbias.pr.mean <- 0.15
 ancbias.pr.sd <- 1.0
-## muSS <- 1/11.5               #1/duration for r steady state prior
+muSS <- 1/11.5               #1/duration for r steady state prior
 
 lprior <- function(theta, fp){
 
@@ -69,7 +69,7 @@ ll <- function(theta, fp, likdat){
   theta.last <<- theta
   param <- fnCreateParam(theta, fp)
 
-  if(min(param$rvec)<0 || max(param$rvec)>100) # Test positivity of rvec
+  if(min(param$rvec)<0 || max(param$rvec)>20) # Test positivity of rvec
     return(-Inf) 
   
   if(inherits(fp, "specfp"))  ## TODO: revise to use generic functions
@@ -85,7 +85,16 @@ ll <- function(theta, fp, likdat){
 
   ll.anc <- log(fnANClik(qM.preg+param$ancbias, likdat$anclik.dat))
   ll.hhs <- fnHHSll(qM.all, likdat$hhslik.dat)
-  return(ll.anc+ll.hhs)
+
+  if(exists("equil.rprior", where=fp) && fp$equil.rprior){
+    rvec.ann <- param$rvec[fp$proj.steps %% 1 == 0.5]
+    equil.rprior.mean <- muSS/(1-pnorm(qM.all[likdat$lastdata.idx]))
+    equil.rprior.sd <- sqrt(mean((muSS/(1-pnorm(qM.all[lastdata.idx - 10:1])) - rvec.ann[lastdata.idx - 10:1])^2))  # empirical sd based on 10 previous years
+    ll.rprior <- sum(dnorm(rvec.ann[lastdata.idx:length(qM.all)], equil.rprior.mean, equil.rprior.sd, log=TRUE))  # prior starts in last data year (Dan's starts in next year)
+  } else
+    ll.rprior <- 0
+  
+  return(ll.anc+ll.hhs+ll.rprior)
 }
 
 
