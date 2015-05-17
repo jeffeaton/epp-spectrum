@@ -207,7 +207,7 @@ fnPregPrev.epp <- function(mod, fp){
 }
 
 incid.epp <- function(mod, param, fp){
-  param$rvec[fp$proj.steps %% 1 == 0.5] * (rowSums(mod[,-1,1]) + fp$relinfectART * rowSums(mod[,-1,1])) / rowSums(mod)
+  param$rvec[fp$proj.steps %% 1 == 0.5] * (rowSums(mod[,-1,1]) + fp$relinfectART * rowSums(mod[,-1,-1])) / rowSums(mod)
 }
 
 ## fnCreateParam <- function(theta, fp){
