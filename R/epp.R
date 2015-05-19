@@ -210,11 +210,11 @@ incid.epp <- function(mod, param, fp){
   param$rvec[fp$proj.steps %% 1 == 0.5] * (rowSums(mod[,-1,1]) + fp$relinfectART * rowSums(mod[,-1,-1])) / rowSums(mod)
 }
 
-fnCreateParam <- function(theta, fp){
-  return(list(rvec = exp(as.vector(fp$rvec.spldes %*% theta[1:fp$numKnots])),
-              iota = exp(theta[fp$numKnots+1]),
-              ancbias = theta[fp$numKnots+2]))
-}
+## fnCreateParam <- function(theta, fp){
+##   return(list(rvec = exp(as.vector(fp$rvec.spldes %*% theta[1:fp$numKnots])),
+##               iota = exp(theta[fp$numKnots+1]),
+##               ancbias = theta[fp$numKnots+2]))
+## }
 
 fnARTCov <- function(mod){
   rowSums(mod[,-1,-1]) / rowSums(mod[,-1,])

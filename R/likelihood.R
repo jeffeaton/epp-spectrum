@@ -1,180 +1,145 @@
-library(gdata)
-fert.dist <- read.xls("../south-africa/south-africa-demproj.xlsx", "ASFR", row.names=1, as.is=TRUE)
-fert.dist <- data.frame(lapply(fert.dist, as.numeric))
-tfr <- as.numeric(read.xls("../south-africa/south-africa-demproj.xlsx", "TFR", row.names=1))
-asfr <- mapply("*", fert.dist[1:7,]/500, as.list(tfr))
-fert.rat <- read.xls("../south-africa/south-africa-nathist.xlsx", "fertility ratio", row.names=1)$Ratio
-rm(fert.dist, tfr)
+
+dir <- getwd()
+## setwd("~/anclik/")
+setwd("~/Documents/Code/R/anclik/")
+source("anclik.R")
+setwd(dir)
+rm(dir)
+
+source("R/epp.R")
+source("R/spectrum.R")
+source("R/generics.R")
+
+source("R/IMIS.R")
+
 
 #################
-####  Model  ####
+####  Prior  ####
 #################
 
-## source("C++/functions.R")
-## source("R/spectrum.R")
-source("analysis-functions.R")
+logiota.unif.prior <- c(log(1e-14), log(0.0025))
+tau2.prior.rate <- 0.5
 
-
-################
-####  Data  ####
-################
-
-source("../south-africa/sa-prevalence-data.R")
-sa.anc$idx <- 21:42
-## sa.15to49$idx <- c(33, 36, 39, 43)
-sa.ageprev$idx <- c(33, 36, 39, 43)
-
-anc.dat <- sa.anc
-## hhsurv.dat <- sa.15to49
-hhsurv.ageprev <- sa.ageprev
-
-
-######################
-####  Likelihood  ####
-######################
-
-if(!exists("MODEL")) MODEL <- "rmat"
-
-library(parallel)
-options("mc.cores" = 8L)
-library(pscl)
-
-## Prior parameters
-# logiota.unif.prior <- c(log(1e-14), log(0.0025))
-logiota.unif.prior <- c(log(1e-14), log(1e-10))
-# tau2.prior.rate <- 0.5
-# tau2.prior.rate <- 1.0
-tau2.prior.rate <- 0.1
 invGammaParameter <- 0.001   #Inverse gamma parameter for tau^2 prior for spline
-## muSS <- 1/11.5               #1/duration for r steady state prior
+ancbias.pr.mean <- 0.15
+ancbias.pr.sd <- 1.0
+muSS <- 1/11.5               #1/duration for r steady state prior
+
+lprior <- function(theta, fp){
+
+  nk <- fp$numKnots
+  tau2 <- exp(theta[nk+3])
+
+  return(sum(dnorm(theta[3:nk], 0, sqrt(tau2), log=TRUE)) +
+         dunif(theta[nk+1], logiota.unif.prior[1], logiota.unif.prior[2], log=TRUE) + 
+         dnorm(theta[nk+2], ancbias.pr.mean, ancbias.pr.sd, log=TRUE) +
+         log(densigamma(tau2, invGammaParameter, invGammaParameter)))         
+}
+
+################################
+####                        ####
+####  HH survey likelihood  ####
+####                        ####
+################################
+
+library(mvtnorm)
+library(pscl)  # for densigamma()
 
 
-lprior <- function(theta){
-  tau2 <- exp(theta[2])
-  return(dunif(theta[1], logiota.unif.prior[1], logiota.unif.prior[2], log=TRUE) +
-         log(densigamma(tau2, invGammaParameter, invGammaParameter)) +
-         sum(dnorm(theta[4 + 1:(numSplines-2)], 0, sqrt(tau2), log=TRUE)) +
-         sum(dbeta((theta[2+numSplines+c(2,4)] - 15) / 50, 1.3, 1.3)) +
-         sum(dgamma(theta[2+numSplines+c(2,4)], 2.5, 0.05, log=TRUE)) +      # variance of age distribution
+fnHHSll <- function(qM, hhslik.dat){
+  return(sum(dnorm(hhslik.dat$W.hhs, qM[hhslik.dat$idx], hhslik.dat$sd.W.hhs, log=TRUE)))
+}
 
-         if(MODEL=="rmat")
-         dunif(theta[2+numSplines+5], log=TRUE)                             # correlation between m/f age distribution
-         else if(MODEL=="incrr")
-           dunif(theta[2+numSplines+5], log(0.9), log(1.8), log=TRUE))
-         
+
+fnCreateParam <- function(theta, fp){
+
+  u <- theta[1:fp$numKnots]
+  beta <- numeric(fp$numKnots)
+  beta[1] <- u[1]
+  beta[2] <- u[1]+u[2]
+  for(i in 3:fp$numKnots)
+    beta[i] <- -beta[i-2] + 2*beta[i-1] + u[i]
+    
+  return(list(rvec = as.vector(fp$rvec.spldes %*% beta),
+              iota = exp(theta[fp$numKnots+1]),
+              ancbias = theta[fp$numKnots+2]))
+}
+
+ll <- function(theta, fp, likdat){
+  theta.last <<- theta
+  param <- fnCreateParam(theta, fp)
+
+  if(min(param$rvec)<0 || max(param$rvec)>20) # Test positivity of rvec
+    return(-Inf) 
+  
+  if(inherits(fp, "specfp"))  ## TODO: revise to use generic functions
+    mod <- fnSpectrum(param, fp)
+  else
+    mod <- fnEPP(param, fp)
+
+  qM.all <- qnorm(prev(mod))
+  qM.preg <- if(fp$pregprev) qnorm(fnPregPrev(mod, fp)) else qM.all
+
+  if(any(is.na(qM.all)) || any(qM.all[-1] == -Inf))
+    return(-Inf)
+
+  ll.anc <- log(fnANClik(qM.preg+param$ancbias, likdat$anclik.dat))
+  ll.hhs <- fnHHSll(qM.all, likdat$hhslik.dat)
+
+  if(exists("equil.rprior", where=fp) && fp$equil.rprior){
+    rvec.ann <- param$rvec[fp$proj.steps %% 1 == 0.5]
+    equil.rprior.mean <- muSS/(1-pnorm(qM.all[likdat$lastdata.idx]))
+    equil.rprior.sd <- sqrt(mean((muSS/(1-pnorm(qM.all[lastdata.idx - 10:1])) - rvec.ann[lastdata.idx - 10:1])^2))  # empirical sd based on 10 previous years
+    ll.rprior <- sum(dnorm(rvec.ann[lastdata.idx:length(qM.all)], equil.rprior.mean, equil.rprior.sd, log=TRUE))  # prior starts in last data year (Dan's starts in next year)
+  } else
+    ll.rprior <- 0
+  
+  return(ll.anc+ll.hhs+ll.rprior)
+}
+
+
+##########################
+####  IMIS functions  ####
+##########################
+
+## Note: requires fp and likdat to be in global environment
+
+sample.prior <- function(n){
+  
+  mat <- matrix(NA, n, fp$numKnots+3)
+  
+  ## sample penalty variance
+  tau2 <- rexp(n, tau2.prior.rate)                  # variance of second-order spline differences
+  
+  mat[,1] <- rnorm(n, 1.5, 1)                                                     # u[1]
+  mat[,2:fp$numKnots] <- rnorm(n*(fp$numKnots-1), 0, sqrt(tau2))                  # u[2:numKnots]
+  mat[,fp$numKnots+1] <-  runif(n, logiota.unif.prior[1], logiota.unif.prior[2])  # iota
+  mat[,fp$numKnots+2] <-  rnorm(n, ancbias.pr.mean, ancbias.pr.sd)                # ancbias parameter
+  mat[,fp$numKnots+3] <- log(tau2)                                                # tau2
+  
+  
+  return(mat)
 }
 
 prior <- function(theta){
-  if(is.vector(theta))
-    theta <- matrix(theta, 1)
-
-  ## return(exp(apply(theta, 1, lprior)))
-  nr <- nrow(theta)
-  return(unlist(mclapply(1:nr, function(i) return(exp(lprior(theta[i,]))))))
+  return(unlist(lapply(seq_len(nrow(theta)), function(i) return(exp(lprior(theta[i,], fp))))))
 }
 
-sample.prior <- function(n){
-
- ## mat <- matrix(NA, n, numSplines+2)
- ## mat[,1] <- runif(n, logiota.unif.prior[1], logiota.unif.prior[2])
- ## tau2 <- rexp(n, tau2.prior.rate)
- ## mat[,2] <- log(tau2)
- ## mat[,3] <- rnorm(n, 1, 2)
- ## mat[,-(1:3)] <- rnorm(n*(numSplines-1), 0, sqrt(tau2))
-
-  mat <- matrix(NA, n, 2+numSplines+5)
-
-  mat[,1] <- runif(n, logiota.unif.prior[1], logiota.unif.prior[2])  # iota
-
-  if(MODEL=="rmat")
-    tau2 <- rexp(n, tau2.prior.rate)                                   # sd of spline
-  else if(MODEL=="incrr")
-    tau2 <- rexp(n, 0.5)                                   # sd of spline
-  
-  mat[,2] <- log(tau2)
-
-  if(MODEL=="rmat")
-    mat[,3] <- rnorm(n, 15, 7)
-  else if(MODEL == "incrr")
-    mat[,3] <- rnorm(n, 1.5, 1)
-
-  mat[,3+1:(numSplines-1)] <- rnorm(n*(numSplines-1), 0, sqrt(tau2))
-  mat[,2+numSplines+c(1,3)] <- 15 + 50*rbeta(2*n, 1.3, 1.3)
-  mat[,2+numSplines+c(2,4)] <- rgamma(2*n, 2.5, 0.05)
-
-  if(MODEL=="rmat")
-    mat[,2+numSplines+5] <- runif(n)
-  else if(MODEL=="incrr")
-    mat[,2+numSplines+5] <- runif(n, log(0.9), log(1.8))
-    
- return(mat)
+likelihood <- function(theta){
+  return(unlist(lapply(seq_len(nrow(theta)), function(i) return(exp(ll(theta[i,], fp, likdat))))))
 }
 
-create.param <- function(theta){
 
-  param <- list(iota = exp(theta[1]),  # initial epidemic pulse
-                rVec = fnBSpline(theta[2+1:numSplines]))
+#########################################################
+####  Define fixed parameters for fitting scenarios  ####
+#########################################################
 
-  if(MODEL=="rmat"){
-    Rmat.par <- theta[2+numSplines+1:5]
-    Rmat <- create.rmat(Rmat.par[1], Rmat.par[2], Rmat.par[3], Rmat.par[4], Rmat.par[5])
-    param$Rmat <- Rmat
-  } else if(MODEL=="incrr"){
-    par <- theta[2+numSplines+1:5]
-    param <- create.incrr(par[1], par[2], par[3], par[4], exp(par[5]), param)
-  }
-
-  return(param)
-}
-
-ll <- function(theta, ANCPREV_LIKELIHOOD = TRUE, DEBUG = FALSE){
-
-  if(DEBUG)
-    lasttheta <<- theta
-
-  param <- create.param(theta)
-
-  # if(min(rVec)<0 || max(rVec)>20) # Test positivity constraint
-  if(min(param$rVec)<0 || max(param$rVec)>100) # Test positivity constraint
-    return(-Inf) 
-  
-  mod <- fnSpectrum(param)
-  ## lM15to49 <- logit(prev(mod)[hhsurv.dat$idx])
-  lMageprev <- logit(ageprev(mod[hhsurv.ageprev$idx,,,,], age15plus.idx, c(1:9, rep(10, 5))))
-
-  
-  ## if(any(is.na(lM15to49)) || any(lM15to49 > logit(0.95)))
-  ##    return(-Inf)
-  if(any(is.na(lMageprev)) || any(lMageprev > logit(0.95)))
-    return(-Inf)
-  if(ANCPREV_LIKELIHOOD)
-    lManc <- logit(fnANCprev(mod)[anc.dat$idx])
-  else
-    lManc <- logit(prev(mod)[anc.dat$idx])
-  if(any(is.na(lManc)) || any(lManc > logit(0.95)))
-    return(-Inf)
-  
-  gamma.unif.pr <- c(0,1)
-  S2 <- 1/sum(1/anc.dat$logit.var)
-  dbar <- sum((anc.dat$logit.p - lManc)/anc.dat$logit.var)*S2
-  d2bar <- sum((anc.dat$logit.p - lManc)^2/anc.dat$logit.var)*S2
-
-  ll.anc <- log(S2)/2 - sum(log(anc.dat$logit.var))/2 + (dbar^2 - d2bar)/S2 + log(pnorm(gamma.unif.pr[2], dbar, sqrt(S2)) - pnorm(gamma.unif.pr[1], dbar, sqrt(S2)))
-  ll.hhsurv <- sum(dnorm(lMageprev, hhsurv.ageprev$logit.p, hhsurv.ageprev$logit.se, log=TRUE))
-
-  if(any(is.na(ll.anc)) || any(is.na(ll.hhsurv)))
-    return(-Inf)
-
-  return(ll.anc + ll.hhsurv)
-}
-
-likelihood <- function(theta, DEBUG=FALSE){
-  if(is.vector(theta))
-     theta <- matrix(theta, 1)
-  nr <- nrow(theta)
-
-  if(DEBUG)
-    return(unlist(lapply(1:nr, function(i) return(exp(ll(theta[i,]))))))
-  
-  return(unlist(mclapply(1:nr, function(i) return(exp(ll(theta[i,]))))))
-}
+epp.fp <- list(pregprev=FALSE)
+spec.fp <- list(pregprev=FALSE)
+## preg.fp <- list("cd4stage.weight" = c(1.3, 0.6, 0.1, 0.1, 0.0, 0.0, 0.0),  ## for EPP stage weighted prev
+##                 "art1yr.weight" = 0.3, pregprev=TRUE)
+asfr.fp <- list("age.fertrat" = rep(1, 7), "stage.fertrat" = rep(1, 7), "art.fertrat" = 1, pregprev=TRUE)
+age.fp <- list("age.fertrat" = c(1.20, 0.76, 0.71, 0.65, 0.59, 0.53, 0.47), "stage.fertrat" = rep(1, 7), "art.fertrat" = 1, pregprev=TRUE)
+stage.fp <- list("age.fertrat" = c(1.59, 1.06, 1.06, 1.00, 0.98, 0.91, 0.86),
+                 "stage.fertrat" = c(1.25, 0.6, 0.4, 0.4, 0.3, 0.3, 0.3),
+                 "art.fertrat" = 0.6, pregprev=TRUE)
