@@ -80,6 +80,17 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
                             "Female"=approx(as.numeric(names(f.artnum.15plus))+1-dt, f.artnum.15plus, proj.steps, rule=2)$y)
 
 
+  ##############################################################
+  ####  CD4 initial distribution for vertical transmission  ####
+  ##############################################################
+
+  ## Start a large fraction of vertically infected infants in last
+  ## CD4 stage to effect rapid mortality
+  cd4.initdist <- projp$cd4.initdist
+  cd4.initdist[,1,] <- 0.45*cd4.initdist[,1,]  ## HARD CODED percentage
+  cd4.initdist[,1,7] <- 0.55  
+  
+
   ###########################
   ##  r-spline parameters  ##
   ###########################
@@ -101,9 +112,9 @@ CreateSpectrumFixpar <- function(projp, demp, dt = 0.1, proj.start = projp$yr.st
              age.fertrat      = projp$fert.rat,
              stage.fertrat    = c(1.25, 0.6, 0.4, 0.4, 0.3, 0.3, 0.3),
              art.fertrat      = 0.6,
-             vert.trans       = 0,
+             vert.trans       = 0.3,
              cd4.prog         = projp$cd4.prog,
-             cd4.initdist     = projp$cd4.initdist,
+             cd4.initdist     = cd4.initdist,
              cd4.art.mort     = projp$cd4.art.mort,
              relinfectART     = relinfectART,
              artelig.idx.ts   = as.integer(artelig.idx.ts),
