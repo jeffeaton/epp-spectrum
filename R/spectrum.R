@@ -252,5 +252,5 @@ fnPregPrev.spec <- function(mod, fp){
 }
 
 incid.spec <- function(mod, param, fp, age.idx=age15to49.idx, sex.idx=c(m.idx, f.idx)){
-  param$rvec[fp$proj.steps %% 1 == 0.5] * (rowSums(mod[, , age15to49.idx, -1, 1]) + fp$relinfectART * rowSums(mod[, , age15to49.idx, -1, -1])) / rowSums(mod[,, age15to49.idx,1,])
+  param$rvec[fp$proj.steps %% 1 == 0.5] * (rowSums(mod[,, age15to49.idx, -1, 1]) + fp$relinfectART * rowSums(mod[, , age15to49.idx, -1, -1])) / rowSums(mod[,,age15to49.idx,,])
 }
