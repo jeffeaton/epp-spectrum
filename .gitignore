@@ -6,6 +6,7 @@
 */.Rhistory
 */.RData
 /analyses/cluster/*
+/analyses/*
 *.RData
 
 *.pdf
